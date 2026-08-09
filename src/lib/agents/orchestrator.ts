@@ -61,6 +61,13 @@ export class Orchestrator extends BaseAgent {
       status: "INFO",
     });
 
+    if (this.ctx.tripId) {
+      demoStore.setTripMeta(this.ctx.tripId, {
+        roveOptions: options,
+        rovePick: pick,
+      });
+    }
+
     emitTrace({ tripId: this.ctx.tripId, agent: "PLANNER", step: "Drafting itinerary (Gemini / skeleton)", status: "running" });
     const planned = await planner.planFromText(task.id, text, profile?.dna as any);
     const plan = planned.plan;

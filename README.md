@@ -3,7 +3,7 @@
 An agentic travel platform: AI agents plan trips, react to disruptions in real time,
 and — via [Rain](https://raincards.xyz) — actually hold a card and pay for what they book.
 
-Built for Rain Hacks.
+Built for Checkout.
 
 ## What it does
 

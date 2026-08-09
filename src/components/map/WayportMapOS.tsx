@@ -381,54 +381,67 @@ export default function WayportMapOS({
       }
     }
 
-    // Stops at the same place (a hotel used twice, a venue across two days)
-    // would otherwise stack into one clickable pin with the rest hidden
-    // underneath. Group them and label the group with how many it covers.
-    const groups = new Map<string, { stops: TripStop[]; indices: number[] }>();
-    dayStops.forEach((s, i) => {
-      const key = `${s.lng.toFixed(5)},${s.lat.toFixed(5)}`;
-      const g = groups.get(key);
-      if (g) {
-        g.stops.push(s);
-        g.indices.push(i);
-      } else {
-        groups.set(key, { stops: [s], indices: [i] });
-      }
-    });
-
-    for (const { stops: group, indices } of groups.values()) {
-      const primary = group[0];
+    // Distinct numbered pins — spiderfy coincident stops so "1+2" never
+    // hides stops 2 and 3 under a merged bubble.
+    const placed = spiderfyStops(dayStops);
+    for (const { stop, index, lng, lat } of placed) {
       const el = document.createElement("button");
       el.className = "wp-map-marker";
       el.type = "button";
-
-      const label =
-        group.length > 1
-          ? `${indices[0] + 1}+${group.length - 1}`
-          : String(indices[0] + 1);
-      el.innerHTML = `<span>${label}</span>`;
-      el.setAttribute(
-        "aria-label",
-        group.length > 1
-          ? `${group.length} stops here: ${group.map((s) => s.title).join(", ")}`
-          : primary.title,
-      );
-      el.title = group.map((s) => s.title).join("\n");
-
-      if (group.some((s) => sel === s.id || hov === s.id)) el.classList.add("is-active");
+      el.innerHTML = `<span>${index + 1}</span>`;
+      el.setAttribute("aria-label", `Stop ${index + 1}: ${stop.title}`);
+      el.title = `${index + 1}. ${stop.title}`;
+      if (sel === stop.id || hov === stop.id) el.classList.add("is-active");
 
       el.onclick = () => {
-        // Cycle through co-located stops on repeated clicks.
-        const current = group.findIndex((s) => s.id === sel);
-        const next = group[(current + 1) % group.length];
-        setSelected(next.id);
-        map.flyTo({ center: [primary.lng, primary.lat], zoom: 14.5, pitch: 55, duration: 900 });
+        setSelected(stop.id);
+        map.flyTo({
+          center: [stop.lng, stop.lat],
+          zoom: 14.5,
+          pitch: 55,
+          duration: 900,
+        });
       };
 
       markersRef.current.push(
-        new mapboxgl.Marker({ element: el }).setLngLat([primary.lng, primary.lat]).addTo(map),
+        new mapboxgl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map),
       );
     }
+  }
+
+  /**
+   * Display-only offsets for stops that share the same rounded lat/lng.
+   * Real coordinates stay on the stop (routes / flyTo use those).
+   */
+  function spiderfyStops(stops: TripStop[]): {
+    stop: TripStop;
+    index: number;
+    lng: number;
+    lat: number;
+  }[] {
+    const buckets = new Map<string, number[]>();
+    stops.forEach((s, i) => {
+      const key = `${s.lng.toFixed(5)},${s.lat.toFixed(5)}`;
+      const arr = buckets.get(key) ?? [];
+      arr.push(i);
+      buckets.set(key, arr);
+    });
+
+    // ~15–20 m ring — enough to separate pins without lying about the place.
+    const R = 0.00014;
+    return stops.map((stop, index) => {
+      const key = `${stop.lng.toFixed(5)},${stop.lat.toFixed(5)}`;
+      const peers = buckets.get(key)!;
+      if (peers.length === 1) return { stop, index, lng: stop.lng, lat: stop.lat };
+      const k = peers.indexOf(index);
+      const angle = (2 * Math.PI * k) / peers.length - Math.PI / 2;
+      return {
+        stop,
+        index,
+        lng: stop.lng + R * Math.cos(angle),
+        lat: stop.lat + R * Math.sin(angle),
+      };
+    });
   }
 
   /**
