@@ -1,0 +1,806 @@
+// WAYPORT Travel Graph — Prisma schema
+// Core invariant: UI never owns trip logic. All trip state lives here.
+
+generator client {
+  provider        = "prisma-client-js"
+  output          = "../src/server/generated/prisma"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [pgvector(map: "vector")]
+}
+
+// ─────────────────────────────────────────────────────────────
+// Identity & Travel DNA
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String   @unique
+  name      String?
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile       TravelerProfile?
+  trips         Trip[]
+  memories      Memory[]
+  documents     TravelDocument[]
+  notifications Notification[]
+  agentActions  AgentAction[]
+
+  // Group travel
+  sharedTrips TripTraveler[]
+
+  // B2B roles
+  advisorFor Trip[]      @relation("AdvisorTrips")
+  hotelStays HotelStay[]
+}
+
+model TravelerProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Traveler DNA (flexible JSON score sheet)
+  dna Json @default("{}")
+
+  // Extracted convenience fields for querying
+  homeAirport         String?
+  passportCountry     String?
+  passportExpiry      DateTime?
+  dietaryRestrictions String[]
+  mobilityNeeds       String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Long-term memory (pgvector)
+model Memory {
+  id        String                       @id @default(cuid())
+  userId    String
+  user      User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tripId    String?
+  trip      Trip?                        @relation(fields: [tripId], references: [id], onDelete: SetNull)
+  kind      MemoryKind
+  content   String
+  embedding Unsupported("vector(1536)")?
+  metadata  Json                         @default("{}")
+  createdAt DateTime                     @default(now())
+
+  @@index([userId, kind])
+}
+
+enum MemoryKind {
+  PREFERENCE
+  TRIP_NOTE
+  FEEDBACK
+  FACT
+  LEARNED
+}
+
+// ─────────────────────────────────────────────────────────────
+// Trips & Travel Graph
+// ─────────────────────────────────────────────────────────────
+
+model Trip {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  advisorId String?
+  advisor   User?   @relation("AdvisorTrips", fields: [advisorId], references: [id], onDelete: SetNull)
+
+  title       String
+  destination String
+  startDate   DateTime?
+  endDate     DateTime?
+  status      TripStatus @default(DRAFT)
+  mode        TripMode   @default(PLANNING) // Planning vs Live
+
+  // The core optimization state (persisted — not the solver itself)
+  optimizationState Json @default("{}")
+
+  // Collaboration
+  travelers TripTraveler[]
+
+  // Graph nodes
+  items        TripItem[]
+  budgets      Budget[]
+  alerts       TravelAlert[]
+  agentActions AgentAction[]
+  memories     Memory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([advisorId])
+}
+
+enum TripStatus {
+  DRAFT
+  PLANNING
+  CONFIRMED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum TripMode {
+  PLANNING
+  LIVE
+}
+
+// Group travel / sharing
+model TripTraveler {
+  id             String       @id @default(cuid())
+  tripId         String
+  trip           Trip         @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           TravelerRole @default(TRAVELER)
+  isPrimary      Boolean      @default(false)
+  availability   Json         @default("{}")
+  roomPreference String?
+
+  @@unique([tripId, userId])
+}
+
+enum TravelerRole {
+  OWNER
+  ADVISOR
+  TRAVELER
+  COMPANION
+}
+
+// Polymorphic graph node — flight, hotel, restaurant, activity, event, transit, transfer, experience
+model TripItem {
+  id     String         @id @default(cuid())
+  tripId String
+  trip   Trip           @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  kind   TripItemKind
+  status TripItemStatus @default(TENTATIVE)
+
+  // Common fields
+  title            String
+  provider         String? // stay22, amadeus, viator, manual, etc.
+  providerRef      String? // external ID
+  startTime        DateTime?
+  endTime          DateTime?
+  location         String?
+  lat              Float?
+  lng              Float?
+  address          String?
+  confirmationCode String?
+
+  // Flight-specific payload
+  flight FlightDetails?
+  // Hotel-specific payload
+  hotel  HotelDetails?
+
+  // Graph edges (outbound)
+  outEdges TripEdge[] @relation("FromItem")
+  inEdges  TripEdge[] @relation("ToItem")
+
+  // Linked booking
+  booking Booking?
+
+  // Rich payload (JSON for flexible attributes)
+  payload Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tripId, kind])
+  @@index([tripId, startTime])
+}
+
+enum TripItemKind {
+  FLIGHT
+  HOTEL
+  RESTAURANT
+  ACTIVITY
+  EVENT
+  TRANSIT
+  TRANSFER
+  EXPERIENCE
+  LANDMARK
+  CUSTOM
+}
+
+enum TripItemStatus {
+  TENTATIVE
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  DISRUPTED
+}
+
+// Flight details (normalized FlightOffer shape)
+model FlightDetails {
+  id         String   @id @default(cuid())
+  tripItemId String   @unique
+  tripItem   TripItem @relation(fields: [tripItemId], references: [id], onDelete: Cascade)
+
+  airline         String
+  airlineName     String?
+  flightNumber    String
+  origin          String
+  destination     String
+  departureTime   DateTime
+  arrivalTime     DateTime
+  durationMinutes Int?
+  cabin           String?
+  fareClass       String?
+  seats           String[]
+  aircraft        String?
+  baggage         Json         @default("[]")
+  seatMap         Json         @default("{}")
+  status          FlightStatus @default(SCHEDULED)
+  delayMinutes    Int?
+
+  // Deep link for booking
+  bookingUrl    String?
+  priceTotal    Decimal? @db.Decimal(10, 2)
+  priceCurrency String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum FlightStatus {
+  SCHEDULED
+  DELAYED
+  CANCELLED
+  BOARDING
+  DEPARTED
+  ARRIVED
+  DIVERTED
+}
+
+model HotelDetails {
+  id         String   @id @default(cuid())
+  tripItemId String   @unique
+  tripItem   TripItem @relation(fields: [tripItemId], references: [id], onDelete: Cascade)
+
+  starRating     Float?
+  wayportMatch   Int? // 0-100
+  pricePerNight  Decimal? @db.Decimal(10, 2)
+  currency       String?
+  roomType       String?
+  amenities      String[]
+  accessibility  Json     @default("{}")
+  noiseScore     Float? // 0-1, lower = noisier
+  walkability    Int?
+  safetyScore    Float?
+  bookingUrl     String?
+  supplierPrices Json     @default("[]") // [{supplier, price, url}]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Graph edges between items (ground transport, walking, dependency, timing)
+model TripEdge {
+  id     String   @id @default(cuid())
+  fromId String
+  toId   String
+  from   TripItem @relation("FromItem", fields: [fromId], references: [id], onDelete: Cascade)
+  to     TripItem @relation("ToItem", fields: [toId], references: [id], onDelete: Cascade)
+
+  mode          EdgeMode @default(WALKING)
+  minutes       Int?
+  cost          Decimal? @db.Decimal(10, 2)
+  currency      String?
+  reliability   Float? // 0-1
+  walkingMeters Int?
+  accessibility Json     @default("{}")
+  carbonKg      Float?
+  metadata      Json     @default("{}")
+
+  @@unique([fromId, toId, mode])
+}
+
+enum EdgeMode {
+  WALKING
+  SUBWAY
+  TRAIN
+  BUS
+  RIDESHARE
+  TAXI
+  RENTAL_CAR
+  BIKE
+  SHUTTLE
+  FLIGHT
+  FERRY
+  DEPENDENCY
+}
+
+// ─────────────────────────────────────────────────────────────
+// Booking Orchestrator (universal transaction layer)
+// ─────────────────────────────────────────────────────────────
+
+model Booking {
+  id                 String        @id @default(cuid())
+  provider           String // stay22, amadeus, viator, manual
+  providerRef        String?
+  status             BookingStatus @default(PENDING)
+  totalPrice         Decimal       @db.Decimal(10, 2)
+  currency           String
+  cancellationPolicy Json          @default("{}")
+  travelerIds        String[]
+  tripItemId         String        @unique
+  tripItem           TripItem      @relation(fields: [tripItemId], references: [id], onDelete: Cascade)
+  confirmation       Json?
+  expiresAt          DateTime? // for holds
+  bookedAt           DateTime?
+  cancelledAt        DateTime?
+  refundAmount       Decimal?      @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([provider, status])
+}
+
+enum BookingStatus {
+  PENDING
+  HELD
+  CONFIRMED
+  CANCELLED
+  FAILED
+  REFUNDED
+  MODIFIED
+}
+
+// ─────────────────────────────────────────────────────────────
+// Financial Agent (money layer)
+// ─────────────────────────────────────────────────────────────
+
+model Budget {
+  id          String   @id @default(cuid())
+  tripId      String
+  trip        Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  totalBudget Decimal  @db.Decimal(10, 2)
+  currency    String
+  estimated   Decimal  @default(0) @db.Decimal(10, 2)
+  actual      Decimal  @default(0) @db.Decimal(10, 2)
+  remaining   Decimal  @default(0) @db.Decimal(10, 2)
+  categories  Json     @default("{}") // {flights, hotel, food, activities, transport}
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tripId])
+}
+
+model Expense {
+  id         String        @id @default(cuid())
+  tripId     String
+  itemId     String?
+  title      String
+  amount     Decimal       @db.Decimal(10, 2)
+  currency   String
+  category   String
+  paidBy     String? // userId
+  splitAmong String[]
+  receiptUrl String?
+  status     ExpenseStatus @default(ESTIMATED)
+  occurredAt DateTime?
+  createdAt  DateTime      @default(now())
+
+  @@index([tripId, category])
+}
+
+enum ExpenseStatus {
+  ESTIMATED
+  PENDING
+  PAID
+  REFUNDED
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  bookingId   String?
+  amount      Decimal       @db.Decimal(10, 2)
+  currency    String
+  method      String? // card, points, split
+  status      PaymentStatus @default(PENDING)
+  processedAt DateTime?
+  createdAt   DateTime      @default(now())
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+model CurrencyRate {
+  id   String   @id @default(cuid())
+  from String
+  to   String
+  rate Decimal  @db.Decimal(18, 6)
+  asOf DateTime
+
+  @@unique([from, to])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Agent Activity, Events & Audit
+// ─────────────────────────────────────────────────────────────
+
+model AgentTask {
+  id          String          @id @default(cuid())
+  tripId      String?
+  kind        AgentKind
+  status      AgentTaskStatus @default(PENDING)
+  input       Json
+  result      Json?
+  error       String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime        @default(now())
+
+  actions AgentAction[]
+}
+
+enum AgentKind {
+  PLANNER
+  RESEARCHER
+  EXECUTOR
+  OPTIMIZER
+  GUARDIAN
+  VOICE
+  FINANCIAL
+  CHANGE
+  PRICE_MONITOR
+  EMERGENCY
+  INSURANCE
+  CURRENCY
+  GROUP
+  HOSPITALITY
+  ADVISOR
+}
+
+enum AgentTaskStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model AgentAction {
+  id                String       @id @default(cuid())
+  taskId            String?
+  task              AgentTask?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  agent             AgentKind
+  tool              String?
+  input             Json
+  decision          Json?
+  result            Json?
+  status            ActionStatus @default(INFO)
+  userAuthorization Boolean      @default(false)
+  externalRef       String?
+  rollbackPossible  Boolean      @default(false)
+  userId            String?
+  user              User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tripId            String?
+  trip              Trip?        @relation(fields: [tripId], references: [id], onDelete: SetNull)
+  createdAt         DateTime     @default(now())
+
+  @@index([tripId, createdAt])
+  @@index([userId, createdAt])
+}
+
+enum ActionStatus {
+  INFO
+  PENDING_APPROVAL
+  APPROVED
+  EXECUTED
+  FAILED
+  CANCELLED
+}
+
+// Event stream for replanning loop
+model TripEvent {
+  id        String        @id @default(cuid())
+  tripId    String
+  type      TripEventType
+  payload   Json
+  processed Boolean       @default(false)
+  createdAt DateTime      @default(now())
+
+  @@index([tripId, processed, createdAt])
+}
+
+enum TripEventType {
+  FLIGHT_DELAYED
+  FLIGHT_CANCELLED
+  WEATHER_CHANGED
+  HOTEL_PRICE_CHANGED
+  RESERVATION_CANCELLED
+  USER_PREFERENCE_CHANGED
+  USER_LOCATION_CHANGED
+  BOOKING_CONFIRMED
+  VOICE_CALL_COMPLETED
+  ITINERARY_UPDATED
+  PAYMENT_PROCESSED
+  EMERGENCY_OCCURRED
+  LUGGAGE_LOST
+}
+
+// ─────────────────────────────────────────────────────────────
+// Travel Wallet / Documents
+// ─────────────────────────────────────────────────────────────
+
+model TravelDocument {
+  id         String       @id @default(cuid())
+  userId     String
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tripId     String?
+  kind       DocumentKind
+  title      String
+  url        String // uploaded file / deep link
+  extracted  Json         @default("{}") // parsed entities
+  tripItemId String?
+  expiresAt  DateTime?
+  createdAt  DateTime     @default(now())
+
+  @@index([userId, kind])
+}
+
+enum DocumentKind {
+  PASSPORT
+  BOARDING_PASS
+  HOTEL_CONFIRMATION
+  TICKET
+  INSURANCE
+  VISA
+  RECEIPT
+  LOYALTY_CARD
+  EMERGENCY_CONTACT
+  ITINERARY
+  OTHER
+}
+
+// ─────────────────────────────────────────────────────────────
+// Alerts & Notifications
+// ─────────────────────────────────────────────────────────────
+
+model TravelAlert {
+  id         String        @id @default(cuid())
+  tripId     String
+  trip       Trip          @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  kind       AlertKind
+  severity   AlertSeverity @default(INFO)
+  title      String
+  body       String
+  resolved   Boolean       @default(false)
+  resolvedAt DateTime?
+  createdAt  DateTime      @default(now())
+
+  @@index([tripId, resolved])
+}
+
+enum AlertKind {
+  FLIGHT_DELAY
+  FLIGHT_CANCEL
+  WEATHER
+  PRICE_DROP
+  PRICE_RISE
+  BOOKING_CANCELLED
+  TRAVEL_REQUIREMENT
+  INSURANCE
+  EMERGENCY
+  LUGGAGE
+  GENERAL
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+  URGENT
+}
+
+model Notification {
+  id        String              @id @default(cuid())
+  userId    String
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alertId   String?
+  channel   NotificationChannel
+  title     String
+  body      String
+  sentAt    DateTime?
+  readAt    DateTime?
+  createdAt DateTime            @default(now())
+
+  @@index([userId, readAt])
+}
+
+enum NotificationChannel {
+  IN_APP
+  PUSH
+  EMAIL
+  SMS
+  WHATSAPP
+  VOICE
+}
+
+// ─────────────────────────────────────────────────────────────
+// Experiences Marketplace
+// ─────────────────────────────────────────────────────────────
+
+model Experience {
+  id           String   @id @default(cuid())
+  provider     String // viator, manual
+  providerRef  String?
+  title        String
+  category     String
+  destination  String
+  lat          Float?
+  lng          Float?
+  price        Decimal? @db.Decimal(10, 2)
+  currency     String?
+  durationMin  Int?
+  rating       Float?
+  reviewCount  Int?
+  touristiness Int? // 0-100
+  locality     Int? // 0-100
+  uniqueness   Int? // 0-100
+  bookingUrl   String?
+  imageUrl     String?
+  tags         String[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([destination, category])
+}
+
+// ─────────────────────────────────────────────────────────────
+// B2B: Hotel Operations
+// ─────────────────────────────────────────────────────────────
+
+model HotelProperty {
+  id         String   @id @default(cuid())
+  name       String
+  address    String
+  lat        Float?
+  lng        Float?
+  starRating Float?
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  stays    HotelStay[]
+  requests GuestRequest[]
+}
+
+model HotelStay {
+  id         String        @id @default(cuid())
+  propertyId String
+  property   HotelProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checkIn    DateTime
+  checkOut   DateTime
+  roomNumber String?
+  roomType   String?
+  status     StayStatus    @default(CONFIRMED)
+  createdAt  DateTime      @default(now())
+
+  @@index([propertyId, checkIn])
+}
+
+enum StayStatus {
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+}
+
+model GuestRequest {
+  id         String             @id @default(cuid())
+  propertyId String
+  property   HotelProperty      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  guestId    String // userId
+  kind       GuestRequestKind
+  status     GuestRequestStatus @default(OPEN)
+  title      String
+  body       String?
+  assignedTo String?
+  resolvedAt DateTime?
+  createdAt  DateTime           @default(now())
+
+  @@index([propertyId, status])
+}
+
+enum GuestRequestKind {
+  MAINTENANCE
+  HOUSEKEEPING
+  ROOM_CHANGE
+  UPGRADE
+  LATE_CHECKOUT
+  DINING
+  CONCIERGE
+  OTHER
+}
+
+enum GuestRequestStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CANCELLED
+}
+
+// ─────────────────────────────────────────────────────────────
+// Travel Requirements & Intelligence
+// ─────────────────────────────────────────────────────────────
+
+model TravelRequirement {
+  id           String   @id @default(cuid())
+  destination  String // country code or city
+  requirement  String
+  source       String? // URL to official source
+  sourceBacked Boolean  @default(false)
+  metadata     Json     @default("{}")
+  updatedAt    DateTime @updatedAt
+
+  @@unique([destination, requirement])
+}
+
+model Airport {
+  id            String @id @default(cuid())
+  iata          String @unique
+  name          String
+  city          String
+  country       String
+  terminals     Json   @default("[]")
+  gates         Json   @default("[]")
+  lounges       Json   @default("[]")
+  restaurants   Json   @default("[]")
+  walkingTimes  Json   @default("{}")
+  accessibility Json   @default("{}")
+  metadata      Json   @default("{}")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sandbox / Evaluation
+// ─────────────────────────────────────────────────────────────
+
+model SandboxScenario {
+  id        String          @id @default(cuid())
+  name      String          @unique
+  kind      SandboxKind
+  runs      EvaluationRun[]
+  config    Json
+  createdAt DateTime        @default(now())
+}
+
+enum SandboxKind {
+  FLIGHT_DELAY
+  HOTEL_CANCEL
+  WEATHER_CHANGE
+  RESTAURANT_CLOSE
+  BUDGET_DROP
+  TRAVELER_TIRED
+  PREFERENCE_CHANGE
+  EMERGENCY
+}
+
+model EvaluationRun {
+  id         String           @id @default(cuid())
+  scenarioId String?
+  scenario   SandboxScenario? @relation(fields: [scenarioId], references: [id], onDelete: SetNull)
+  input      Json
+  result     Json?
+  metrics    Json             @default("{}")
+  passed     Boolean?
+  createdAt  DateTime         @default(now())
+}

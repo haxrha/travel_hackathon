@@ -1,0 +1,16 @@
+[project]
+name = "agents"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "cryptography>=44.0.1",
+    "dotenv>=0.9.9",
+    "ipykernel>=7.3.0",
+    "logfire[system-metrics]>=4.40.0",
+    "pydantic-ai>=2.27.0",
+    "pydantic-ai-harness>=0.18.0",
+    "pydantic-ai-slim[retries,tavily]>=2.27.0",
+    "requests>=2.34.2",
+]

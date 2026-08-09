@@ -1,0 +1,630 @@
+@import "tailwindcss";
+
+/*
+  WAYPORT Design Tokens
+  Landscape aesthetic: twilight sky (top) → earthy horizon (bottom)
+  Dark slate/charcoal canvas; warm sunset accents lower; glass surfaces; pill CTAs.
+*/
+
+:root {
+  /* Core canvas — warm dusk / Fora-adjacent earth */
+  --sky-950: #0c0806;
+  --sky-900: #140e0c;
+  --sky-800: #1a120f;
+  --sky-700: #241811;
+  --sky-600: #2f2119;
+
+  --horizon-900: #1a100c;
+  --horizon-700: #3a2418;
+  --horizon-500: #8b5a3c;
+  --horizon-300: #c48a62;
+
+  --text-primary: #faf6f1;
+  --text-secondary: #c4b4a5;
+  --text-tertiary: #8a7a6c;
+
+  --accent: #f5efe6;             /* warm pill CTA */
+  --accent-ink: #1a100c;
+
+  --ember: #e8905a;              /* sunset glow */
+  --lavender: #e8a87c;           /* warm accent (replaces cool lavender) */
+
+  --glass-bg: rgba(32, 22, 16, 0.58);
+  --glass-border: rgba(232, 144, 90, 0.14);
+  --glass-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+
+  --panel: #1a120f;
+  --panel-2: #211612;
+
+  --ok: #7dba6a;
+  --warn: #f0b45a;
+  --err: #e07a6a;
+}
+
+@theme inline {
+  --color-sky-950: var(--sky-950);
+  --color-sky-900: var(--sky-900);
+  --color-sky-800: var(--sky-800);
+  --color-sky-700: var(--sky-700);
+  --color-sky-600: var(--sky-600);
+
+  --color-horizon-900: var(--horizon-900);
+  --color-horizon-700: var(--horizon-700);
+  --color-horizon-500: var(--horizon-500);
+  --color-horizon-300: var(--horizon-300);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+
+  --color-ember: var(--ember);
+  --color-lavender: var(--lavender);
+
+  --color-glass-bg: var(--glass-bg);
+  --color-glass-border: var(--glass-border);
+
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-err: var(--err);
+
+  --font-display: var(--font-display);
+  --font-sans: var(--font-sans);
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  color: var(--text-primary);
+  background: var(--sky-950);
+  font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+  overflow-x: hidden;
+}
+
+/* Landscape twilight sky + horizon atmosphere used on marketing and app shell. */
+.wp-sky {
+  position: relative;
+  background:
+    radial-gradient(1200px 500px at 70% -10%, rgba(232, 144, 90, 0.22), transparent 60%),
+    radial-gradient(900px 460px at 20% 0%, rgba(196, 138, 98, 0.12), transparent 60%),
+    radial-gradient(600px 400px at 80% 90%, rgba(232, 144, 90, 0.16), transparent 65%),
+    linear-gradient(180deg, var(--sky-900) 0%, var(--sky-800) 40%, var(--horizon-900) 78%, #080504 100%);
+}
+
+.wp-sky::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1.6px 1.6px at 12% 18%, rgba(255,255,255,0.55), transparent 50%),
+    radial-gradient(1.2px 1.2px at 32% 42%, rgba(255,255,255,0.35), transparent 50%),
+    radial-gradient(2px 2px at 52% 10%, rgba(255,255,255,0.45), transparent 50%),
+    radial-gradient(1.4px 1.4px at 72% 28%, rgba(255,255,255,0.4), transparent 50%),
+    radial-gradient(1.8px 1.8px at 88% 46%, rgba(255,255,255,0.3), transparent 50%);
+  background-size: 100% 100%;
+  opacity: 0.5;
+}
+
+/* Slow drift of the sky to keep it alive without being noisy. */
+@keyframes wp-sky-drift {
+  from { background-position: 0 0, 0 0, 0 0, 0 0; }
+  to   { background-position: 120px 40px, -80px 30px, 60px 80px, 0 0; }
+}
+
+.wp-sky-animated {
+  animation: wp-sky-drift 60s ease-in-out infinite alternate;
+}
+
+/* Glass surfaces used across marketing + product shell. */
+.wp-glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: var(--glass-shadow);
+}
+
+.wp-glass-soft {
+  background: rgba(23, 32, 53, 0.42);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  backdrop-filter: blur(10px) saturate(130%);
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
+}
+
+/* Pill CTAs — high contrast white on dark. */
+.wp-cta {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-radius: 999px;
+  font-weight: 600;
+  transition: transform .18s ease, box-shadow .18s ease, opacity .18s ease;
+  box-shadow: 0 8px 24px rgba(255,255,255,0.08);
+}
+
+.wp-cta:hover { transform: translateY(-1px); opacity: 0.95; }
+.wp-cta:active { transform: translateY(0.5px) scale(0.99); }
+
+.wp-cta-ghost {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 999px;
+  font-weight: 500;
+  transition: border-color .18s ease, background .18s ease;
+}
+
+.wp-cta-ghost:hover { border-color: rgba(255,255,255,0.36); background: rgba(255,255,255,0.04); }
+
+/* Small uppercase microcopy label. */
+.wp-eyebrow {
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+/* Typography: display vs body — Outfit + IBM Plex Sans wired in layout. */
+.font-display { font-family: var(--font-display), var(--font-sans); }
+
+/* Thin-line icon ring used by nav. */
+.wp-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  padding: 0.55rem;
+  transition: background .15s ease, border-color .15s ease;
+}
+.wp-icon-btn:hover { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.24); }
+
+/* Product stage: lighter, vibrant accent panel inside app shell. */
+.wp-stage {
+  background:
+    radial-gradient(800px 380px at 85% 10%, rgba(232, 144, 90, 0.18), transparent 60%),
+    radial-gradient(600px 320px at 10% 90%, rgba(196, 92, 38, 0.14), transparent 65%),
+    linear-gradient(180deg, #241811 0%, #1a120f 100%);
+  border: 1px solid rgba(232, 144, 90, 0.14);
+}
+
+/* Agent activity feed typewriter dots. */
+@keyframes wp-dot {
+  0%, 80%, 100% { transform: translateY(0); opacity: .35; }
+  40% { transform: translateY(-4px); opacity: 1; }
+}
+.wp-dot { display:inline-block; width:4px; height:4px; border-radius:999px; background: currentColor; margin-right:3px; animation: wp-dot 1.2s infinite ease-in-out; }
+.wp-dot:nth-child(2) { animation-delay: 0.15s; }
+.wp-dot:nth-child(3) { animation-delay: 0.3s; }
+
+/*
+  Ambient sunset wash behind the app shell.
+
+  SunsetPointerHost writes --posX/--posY as normalized [-1, 1] values, already
+  eased frame-to-frame. --wp-travel is the only knob that controls how far the
+  light actually moves: keep it small so this reads as atmosphere rather than a
+  background that chases the cursor.
+*/
+.wp-sunset-host {
+  --posX: 0;
+  --posY: 0;
+  --wp-travel: 14px;
+  --x: calc(var(--posX, 0) * var(--wp-travel));
+  --y: calc(var(--posY, 0) * var(--wp-travel));
+  min-height: 100%;
+  background-color: var(--sky-950);
+  background-image:
+    radial-gradient(120% 90% at calc(78% + var(--x)) calc(-10% + var(--y)), rgba(232, 144, 90, 0.20), transparent 62%),
+    radial-gradient(100% 80% at calc(18% - var(--x)) calc(4% - var(--y)), rgba(196, 138, 98, 0.11), transparent 60%),
+    radial-gradient(140% 120% at calc(60% + var(--x)) 108%, rgba(120, 58, 30, 0.16), transparent 68%),
+    linear-gradient(180deg, var(--sky-900) 0%, var(--sky-800) 46%, var(--horizon-900) 100%);
+  background-attachment: fixed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wp-sunset-host { --wp-travel: 0px; }
+}
+
+/* legacy class kept for safety */
+.wp-sunset-pointer {
+  display: none;
+}
+
+/* Map OS floating panels — light glass, not heavy */
+.wp-map-panel {
+  background: rgba(20, 14, 12, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px) saturate(130%);
+  -webkit-backdrop-filter: blur(12px) saturate(130%);
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.wp-map-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #1a100c;
+  border: 2px solid #f4a261;
+  color: #faf6f1;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-display), system-ui, sans-serif;
+  cursor: pointer;
+  box-shadow: 0 0 0 4px rgba(232, 144, 90, 0.15);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+.wp-map-marker.is-active {
+  background: #e8905a;
+  color: #1a100c;
+  transform: scale(1.15);
+  box-shadow: 0 0 0 6px rgba(232, 144, 90, 0.35);
+}
+
+/* Ensure Mapbox canvas fills its host inside our flex layout */
+.mapboxgl-map,
+.mapboxgl-canvas-container,
+.mapboxgl-canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Theme-matched range sliders (Travel DNA / Autonomy) */
+.wp-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(232, 144, 90, 0.25), rgba(232, 144, 90, 0.55));
+  outline: none;
+}
+.wp-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #e8905a;
+  border: 2px solid #faf6f1;
+  box-shadow: 0 0 0 3px rgba(232, 144, 90, 0.25);
+  cursor: pointer;
+}
+.wp-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #e8905a;
+  border: 2px solid #faf6f1;
+  box-shadow: 0 0 0 3px rgba(232, 144, 90, 0.25);
+  cursor: pointer;
+}
+.wp-range::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(232, 144, 90, 0.35);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Enterprise primitives
+
+   The marketing surface leans on .wp-glass for atmosphere. Inside the product
+   the priority is density and legibility, so these are flatter and quieter:
+   real borders, less blur, tighter rhythm.
+   ───────────────────────────────────────────────────────────── */
+
+/* Surface scale — wp-card is the workhorse; raise/sunken are for nesting. */
+.wp-card {
+  background: linear-gradient(180deg, rgba(45, 31, 24, 0.55), rgba(26, 18, 15, 0.55));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+}
+
+.wp-card-raised {
+  background: linear-gradient(180deg, rgba(58, 40, 30, 0.6), rgba(33, 22, 18, 0.6));
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 16px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.32);
+}
+
+.wp-card-sunken {
+  background: rgba(10, 7, 5, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+}
+
+/* Interactive card — used for trip rows, traveler rows, option pickers. */
+.wp-card-interactive {
+  transition: border-color .16s ease, background .16s ease, transform .16s ease;
+}
+.wp-card-interactive:hover {
+  border-color: rgba(232, 144, 90, 0.34);
+  background: linear-gradient(180deg, rgba(58, 40, 30, 0.62), rgba(33, 22, 18, 0.62));
+}
+.wp-card-interactive:active { transform: translateY(1px); }
+
+/* Selected state for option cards (flight/hotel choices, policy tiers). */
+.wp-card-selected {
+  border-color: rgba(232, 144, 90, 0.55);
+  background: linear-gradient(180deg, rgba(232, 144, 90, 0.14), rgba(232, 144, 90, 0.05));
+  box-shadow: 0 0 0 1px rgba(232, 144, 90, 0.25);
+}
+
+/* Status badges. Neutral is the default; the rest map to the token palette. */
+.wp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.wp-badge-neutral { background: rgba(255,255,255,0.07); color: var(--text-secondary); border-color: rgba(255,255,255,0.1); }
+.wp-badge-ok      { background: rgba(125, 186, 106, 0.14); color: #a8d99a; border-color: rgba(125, 186, 106, 0.3); }
+.wp-badge-warn    { background: rgba(240, 180, 90, 0.14);  color: #f3c986; border-color: rgba(240, 180, 90, 0.3); }
+.wp-badge-err     { background: rgba(224, 122, 106, 0.14); color: #eda093; border-color: rgba(224, 122, 106, 0.32); }
+.wp-badge-accent  { background: rgba(232, 144, 90, 0.16);  color: var(--ember);  border-color: rgba(232, 144, 90, 0.34); }
+
+/* Small dot used inside badges / legends. */
+.wp-dot-mark { width: 6px; height: 6px; border-radius: 999px; background: currentColor; flex: none; }
+
+/* Stat tile — the KPI row on dashboards. */
+.wp-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 1rem 1.15rem;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+.wp-stat-label {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+.wp-stat-value {
+  font-family: var(--font-display), var(--font-sans);
+  font-size: 1.75rem;
+  line-height: 1.05;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dense data table for rosters, expenses, approvals. */
+.wp-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 0.875rem; }
+.wp-table thead th {
+  text-align: left;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255,255,255,0.09);
+  white-space: nowrap;
+}
+.wp-table tbody td {
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  color: var(--text-secondary);
+  vertical-align: middle;
+}
+.wp-table tbody tr:last-child td { border-bottom: none; }
+.wp-table tbody tr { transition: background .14s ease; }
+.wp-table tbody tr:hover { background: rgba(255,255,255,0.028); }
+.wp-table .wp-num { font-variant-numeric: tabular-nums; text-align: right; }
+
+/* Wrapper that lets wide tables scroll without the page scrolling sideways. */
+.wp-table-wrap { width: 100%; overflow-x: auto; }
+
+/* Segmented control — view switchers (Planning / Live, By person / By leg). */
+.wp-seg {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.wp-seg-item {
+  padding: 0.4rem 0.95rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  transition: background .15s ease, color .15s ease;
+  white-space: nowrap;
+}
+.wp-seg-item:hover { color: var(--text-secondary); }
+.wp-seg-item[data-active="true"] {
+  background: rgba(232, 144, 90, 0.18);
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px rgba(232, 144, 90, 0.3);
+}
+
+/* Avatars + overlap stack for trip parties. */
+.wp-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  background: rgba(232, 144, 90, 0.2);
+  color: var(--ember);
+  border: 1px solid rgba(232, 144, 90, 0.32);
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.wp-avatar-stack { display: inline-flex; }
+.wp-avatar-stack > .wp-avatar + .wp-avatar { margin-left: -0.55rem; }
+.wp-avatar-stack > .wp-avatar { box-shadow: 0 0 0 2px var(--sky-900); }
+
+/* Progress / capacity meter — budget burn, RSVP completion, booking progress. */
+.wp-progress {
+  height: 6px;
+  width: 100%;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+.wp-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--horizon-300), var(--ember));
+  transition: width .4s ease;
+}
+.wp-progress-fill[data-tone="ok"]   { background: linear-gradient(90deg, #6fa85e, var(--ok)); }
+.wp-progress-fill[data-tone="warn"] { background: linear-gradient(90deg, #d9a04f, var(--warn)); }
+.wp-progress-fill[data-tone="err"]  { background: linear-gradient(90deg, #c96a5b, var(--err)); }
+
+/* Form controls. */
+.wp-label {
+  display: block;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+.wp-input, .wp-select, .wp-textarea {
+  width: 100%;
+  padding: 0.6rem 0.85rem;
+  border-radius: 10px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.wp-input::placeholder, .wp-textarea::placeholder { color: var(--text-tertiary); }
+.wp-input:focus, .wp-select:focus, .wp-textarea:focus {
+  outline: none;
+  border-color: rgba(232, 144, 90, 0.5);
+  box-shadow: 0 0 0 3px rgba(232, 144, 90, 0.14);
+}
+.wp-select option { background: var(--panel); color: var(--text-primary); }
+
+/* Compact secondary button — toolbar actions, row actions. */
+.wp-btn-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 1px solid rgba(255,255,255,0.14);
+  color: var(--text-secondary);
+  transition: border-color .15s ease, background .15s ease, color .15s ease;
+}
+.wp-btn-sm:hover { border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.05); color: var(--text-primary); }
+.wp-btn-sm[data-tone="accent"] {
+  border-color: rgba(232, 144, 90, 0.4);
+  color: var(--ember);
+  background: rgba(232, 144, 90, 0.1);
+}
+.wp-btn-sm[data-tone="accent"]:hover { background: rgba(232, 144, 90, 0.18); border-color: rgba(232, 144, 90, 0.6); }
+
+/*
+  Indeterminate progress bar.
+
+  For work whose duration we genuinely cannot predict (a server action plus a
+  navigation). A sweeping bar is honest about that; a percentage would be
+  invented. Sits flush inside a rounded container via overflow-hidden.
+*/
+.wp-progress-indeterminate {
+  position: relative;
+  height: 3px;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(232, 144, 90, 0.14);
+}
+
+.wp-progress-indeterminate::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inline-size: 40%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--ember), transparent);
+  animation: wp-sweep 1.15s ease-in-out infinite;
+}
+
+@keyframes wp-sweep {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(350%); }
+}
+
+/* Reduced motion: hold a steady bar rather than sweeping. */
+@media (prefers-reduced-motion: reduce) {
+  .wp-progress-indeterminate::after {
+    animation: none;
+    inline-size: 100%;
+    background: var(--ember);
+    opacity: 0.5;
+  }
+}
+
+/* Section header used at the top of each product page. */
+.wp-section-title {
+  font-family: var(--font-display), var(--font-sans);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* Keyboard focus ring — consistent across every interactive element. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid rgba(232, 144, 90, 0.65);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Scrollbars — the default light track is jarring on this canvas. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(232, 144, 90, 0.28) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: rgba(232, 144, 90, 0.22);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(232, 144, 90, 0.4); background-clip: content-box; }
+
+/* Honor reduced-motion globally rather than per-component. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+

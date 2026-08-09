@@ -1,0 +1,17 @@
+{
+    people_details: (list) each elemnt: person name, age, passport, dietray restrictions, 
+    per_person_budget:
+    total_budget:
+    start_date
+    end_date:
+    office_location:
+    detali (how much should be taken care of/ how much free to deicde)
+
+
+    free text for any information
+
+    optinoal:
+    type of transportation
+    type of food / how much detail
+    team events wanted
+}

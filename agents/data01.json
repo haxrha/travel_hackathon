@@ -1,0 +1,148 @@
+{
+  "trip_request": {
+    "request_id": "TRQ-2026-0847",
+    "created_at": "2026-08-08T09:12:00Z",
+    "status": "submitted",
+
+    "trip_purpose": "Team onsite - Q3 planning & bonding",
+    "trip_type": "team_offsite",
+
+    "organizer": {
+      "name": "Lena Fischer",
+      "email": "lena.fischer@acme.com",
+      "role": "Engineering Manager",
+      "team": "Platform Engineering",
+      "cost_center": "ENG-4410"
+    },
+
+    "destination": {
+      "city": "San Francisco",
+      "country": "USA",
+      "office_address": "525 Market St, San Francisco, CA 94105",
+      "flexible_location": false
+    },
+
+    "dates": {
+      "start_date": "2026-10-12",
+      "end_date": "2026-10-16",
+      "flexible_dates": false,
+      "flex_window_days": null
+    },
+
+    "budget": {
+      "total_budget": 18000,
+      "currency": "USD",
+      "per_person_limit": 4500,
+      "approver": "Markus Weber",
+      "approval_status": "pending"
+    },
+
+    "travelers": [
+      {
+        "traveler_id": "T-001",
+        "name": "Jonas Becker",
+        "email": "jonas.becker@acme.com",
+        "role": "Senior Software Engineer",
+        "home_city": "Berlin",
+        "home_airport": "BER",
+        "passport_country": "DE",
+        "dietary_restrictions": "vegetarian",
+        "accessibility_needs": null,
+        "loyalty_programs": {
+          "airline": "Lufthansa Miles & More - LH4471203",
+          "hotel": null
+        },
+        "preferred_airline": "Lufthansa",
+        "seat_preference": "aisle",
+        "tsa_precheck_known_traveler": null,
+        "emergency_contact": {
+          "name": "Anna Becker",
+          "phone": "+49 151 2233445"
+        }
+      },
+      {
+        "traveler_id": "T-002",
+        "name": "Priya Sharma",
+        "email": "priya.sharma@acme.com",
+        "role": "Backend Engineer",
+        "home_city": "Berlin",
+        "home_airport": "BER",
+        "passport_country": "IN",
+        "dietary_restrictions": null,
+        "accessibility_needs": null,
+        "loyalty_programs": null,
+        "preferred_airline": null,
+        "seat_preference": "window",
+        "tsa_precheck_known_traveler": "KTN-98213765",
+        "emergency_contact": {
+          "name": "Raj Sharma",
+          "phone": "+49 176 8899001"
+        }
+      },
+      {
+        "traveler_id": "T-003",
+        "name": "Tom Weiss",
+        "email": "tom.weiss@acme.com",
+        "role": "DevOps Engineer",
+        "home_city": "Munich",
+        "home_airport": "MUC",
+        "passport_country": "DE",
+        "dietary_restrictions": "no restrictions",
+        "accessibility_needs": "requires wheelchair-accessible hotel room",
+        "loyalty_programs": {
+          "airline": null,
+          "hotel": "Marriott Bonvoy - MB77213840"
+        },
+        "preferred_airline": null,
+        "seat_preference": null,
+        "tsa_precheck_known_traveler": null,
+        "emergency_contact": null
+      },
+      {
+        "traveler_id": "T-004",
+        "name": "Lena Fischer",
+        "email": "lena.fischer@acme.com",
+        "role": "Engineering Manager",
+        "home_city": "Berlin",
+        "home_airport": "BER",
+        "passport_country": "DE",
+        "dietary_restrictions": "lactose intolerant",
+        "accessibility_needs": null,
+        "loyalty_programs": {
+          "airline": "Lufthansa Miles & More - LH1029384",
+          "hotel": "Marriott Bonvoy - MB55291002"
+        },
+        "preferred_airline": "Lufthansa",
+        "seat_preference": "aisle",
+        "tsa_precheck_known_traveler": null,
+        "emergency_contact": {
+          "name": "Paul Fischer",
+          "phone": "+49 160 4455667"
+        }
+      }
+    ],
+
+    "accommodation": {
+      "needed": true,
+      "hotel_preference": "Marriott or similar 4-star, walkable to office",
+      "room_type": "single occupancy per traveler",
+      "check_in": "2026-10-12",
+      "check_out": "2026-10-16",
+      "special_requests": "one wheelchair-accessible room required (see T-003)"
+    },
+
+    "ground_transportation": {
+      "needed": true,
+      "type": "rideshare / airport transfer",
+      "rental_car_required": false
+    },
+
+    "event_details": {
+      "agenda_summary": "Q3 planning workshops, team dinner, office days",
+      "agenda_link": null,
+      "expected_daily_schedule": "office hours 9am-6pm, team dinner Oct 14 evening"
+    },
+
+    "notes": "Please try to keep flight arrival times before 3pm local on Oct 12 so the team can join the welcome dinner."
+  }
+}
