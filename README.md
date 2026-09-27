@@ -1,7 +1,7 @@
 # WAYPORT
 
 An agentic travel platform: AI agents plan trips, react to disruptions in real time,
-and — via [Rain](https://raincards.xyz) — actually hold a card and pay for what they book.
+and — via [Stripe](https://stripe.com) — charge the booking when the traveler confirms.
 
 Built for Checkout.
 
@@ -25,13 +25,18 @@ Built for Checkout.
   delays, weather, cancellations, price drops) and re-invokes the orchestrator to
   repair the plan. A sandbox/eval harness runs 10 scripted disruption scenarios and
   reports the % of constraints still satisfied after each repair.
-- **Agentic commerce via Rain.** Bookings are paid for with single-use virtual cards
-  issued per purchase, scoped to the exact amount and merchant category, then
-  authorized and settled through Rain's sandbox API — no agent ever holds a standing
-  card number. Implemented twice: a Python multi-agent stack
-  (`agents/rain_agent.py`, `agents/utils/rain_tools.py`) for the autonomous
-  research → book loop, and a TypeScript client (`src/lib/rain/client.ts`) so the
-  Next.js app's own booking route settles through the same rails.
+- **Cross-trip traveler memory via Backboard.** Each user gets one Backboard
+  assistant. Every trip is a new thread. Planning turns use memory mode `Auto`,
+  so an offhand preference ("aisle seats", "vegetarian", "no red-eyes", "$150/night")
+  is stored on the assistant and retrieved on the next trip without passing the
+  old thread. The planner and financial agent apply those facts. Without
+  `BACKBOARD_API_KEY`, the same facts stay on the traveler profile and the UI
+  labels them as local.
+- **Agentic commerce via Stripe.** Confirming a booking creates a PaymentIntent.
+  Test keys (`sk_test_`) confirm with Stripe's test card. Live keys open Checkout
+  unless `STRIPE_PAYMENT_METHOD_ID` is set, and `POST /api/stripe/webhook` marks
+  the Travel Graph paid. The Python stack (`agents/rain_agent.py`,
+  `agents/utils/stripe_tools.py`) charges through the same keys.
 - **Everything else.** Live in-trip companion with voice (ElevenLabs), group/enterprise
   trip coordination, a financial agent tracking budget vs. actual, a travel document
   wallet, and a decision-graph visualization that makes agent reasoning inspectable.
@@ -62,10 +67,12 @@ and `start`. Fill in `.env.local` (copied from `.env.example`) with:
 | Search (agent research) | `TAVILY_API_KEY` |
 | Voice | `ELEVENLABS_API_KEY`, `ELEVENLABS_AGENT_ID` |
 | Maps | `MAPBOX_ACCESS_TOKEN`, `NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN` |
-| Payments (sandbox) | `RAIN_API_KEY`, `RAIN_USER_ID`, `RAIN_CONTRACT_ID` |
+| Traveler memory | `BACKBOARD_API_KEY` (optional `BACKBOARD_ASSISTANT_ID`) |
+| Payments | `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` |
 
-`.env.example` ships with working Rain/Tavily/Stay22 sandbox keys for local demoing —
-rotate them before this repo goes anywhere public.
+`.env.example` ships with working Tavily/Stay22 sandbox keys for local demoing —
+rotate them before this repo goes anywhere public. Leave Stripe and Backboard blank
+until you add deployment keys; bookings stay simulated and memory stays local.
 
 Key routes once running:
 
@@ -77,21 +84,21 @@ Key routes once running:
 ## Python agent stack
 
 `agents/` holds a standalone [pydantic-ai](https://ai.pydantic.dev) multi-agent stack
-that researches flights/hotels via Tavily and books/pays via Rain
-(`agents/rain_agent.py`). It shares Rain credentials with the Next.js app by falling
-back to `agents/.env` (see `src/lib/rain/env.ts`).
+that researches flights/hotels via Tavily and books/pays via Stripe
+(`agents/rain_agent.py`). It shares `STRIPE_SECRET_KEY` with the Next.js app, which
+falls back to `agents/.env` when the var is missing from `.env.local`.
 
 ```bash
 cd agents
 uv sync
-cp .env.example .env   # fill in RAIN_*, TAVILY_API_KEY, Gemini creds
+cp .env.example .env   # fill in STRIPE_SECRET_KEY, TAVILY_API_KEY, Gemini creds
 uv run python rain_agent.py
 ```
 
 ## Tech stack
 
 Next.js 16 (App Router) · React 19 · Prisma 7 + Postgres/pgvector · Clerk · Tailwind
-CSS 4 · Mapbox GL · Vercel AI SDK (Gemini) · Rain (payments) · pydantic-ai (Python
+CSS 4 · Mapbox GL · Vercel AI SDK (Gemini) · Stripe (payments) · Backboard (memory) · pydantic-ai (Python
 agent runtime).
 
 ## Project structure
@@ -103,16 +110,19 @@ src/lib/decision/        Symbolic constraint engine, risk scoring, solver
 src/lib/graph/           Travel Graph service, world state, recompute
 src/lib/policy.ts        Risk-tiered autonomy / approval gating
 src/lib/replan/          Event-driven replanning loop
-src/lib/rain/            Rain payments client (TypeScript)
+src/lib/backboard/       Backboard memory client + cross-trip fact store
+src/lib/stripe/          Stripe PaymentIntent, Checkout, and webhook verification
 src/lib/tools/           External providers — flights, hotels, weather, FX, voice
 src/lib/eval/            Disruption sandbox / eval harness
 src/components/app/      Product UI
 prisma/schema.prisma     Travel Graph schema (source of truth for trip state)
-agents/                  Python pydantic-ai multi-agent stack (Rain booking agent)
+agents/                  Python pydantic-ai multi-agent stack (Stripe booking agent)
 ```
 
 ## Known gaps
 
-- No on-chain settlement yet — Rain's `payment-routes` API supports crypto rails
-  (Base, Solana), and routing treasury funding through Monad is planned but not
-  implemented in this snapshot.
+- Stripe live charges need a Checkout return or `STRIPE_PAYMENT_METHOD_ID`. Test
+  keys confirm in-process with `pm_card_visa`.
+- Backboard assistant ids are stored on the traveler profile (Postgres when
+  `DATABASE_URL` is set, otherwise process memory). Set `BACKBOARD_ASSISTANT_ID`
+  to pin one assistant across restarts without a database.

@@ -10,6 +10,10 @@ import { demoStore, getOrCreateProfile, isMemoryGraph } from "../demo/store";
 import { parsePlanningIntent } from "../graph/service";
 import { scoreTripOptions } from "./pricing";
 import { emitTrace } from "./trace";
+import { persistTravelerMemory, recallTravelerMemory } from "../backboard/traveler";
+import type { MemoryTurn } from "../backboard/types";
+import { nightlyCeiling } from "../backboard/facts";
+import { FinancialAgent } from "./financial";
 
 /**
  * WAYPORT Orchestrator — routes input and events to the correct agent,
@@ -68,8 +72,38 @@ export class Orchestrator extends BaseAgent {
       });
     }
 
+    let memory: MemoryTurn | null = null;
+    try {
+      emitTrace({
+        tripId: this.ctx.tripId,
+        agent: "MEMORY",
+        step: "Recalling cross-trip memory",
+        status: "running",
+      });
+      memory = await recallTravelerMemory({
+        userId: this.ctx.userId,
+        tripId: this.ctx.tripId,
+        text,
+      });
+      emitTrace({
+        tripId: this.ctx.tripId,
+        agent: "MEMORY",
+        step: memory.recalled.length ? "Recalled traveler memory" : "No prior traveler memory",
+        detail: memory.recalled.map((f) => f.content).join(" · ").slice(0, 180) || "New traveler thread",
+        status: "ok",
+      });
+    } catch (err) {
+      emitTrace({
+        tripId: this.ctx.tripId,
+        agent: "MEMORY",
+        step: "Memory recall skipped",
+        detail: err instanceof Error ? err.message : "unavailable",
+        status: "warn",
+      });
+    }
+
     emitTrace({ tripId: this.ctx.tripId, agent: "PLANNER", step: "Drafting itinerary (Gemini / skeleton)", status: "running" });
-    const planned = await planner.planFromText(task.id, text, profile?.dna as any);
+    const planned = await planner.planFromText(task.id, text, profile?.dna as any, memory?.applied);
     const plan = planned.plan;
     emitTrace({
       tripId: this.ctx.tripId,
@@ -108,11 +142,13 @@ export class Orchestrator extends BaseAgent {
         checkIn.setDate(checkIn.getDate() + 14);
         const checkOut = new Date(checkIn);
         checkOut.setDate(checkOut.getDate() + (plan?.days ?? 4));
+        const ceiling = nightlyCeiling(memory?.applied ?? []);
         const ranked = await hotels.search(
           dest,
           checkIn.toISOString().slice(0, 10),
           checkOut.toISOString().slice(0, 10),
-          { walking: 0.7, budgetSensitivity: 0.5 },
+          { walking: 0.7, budgetSensitivity: ceiling ? 0.9 : 0.5 },
+          ceiling ? { nightlyCeilingUsd: ceiling } : undefined,
         );
         hotelDecision = (ranked as any).decision ?? null;
         if (this.ctx.tripId && hotelDecision) demoStore.setTripMeta(this.ctx.tripId, { hotelDecision });
@@ -147,6 +183,35 @@ export class Orchestrator extends BaseAgent {
       });
     }
 
+    if (memory) {
+      try {
+        const financial = new FinancialAgent(this.ctx);
+        await financial.enforceTravelerMemory(memory.applied);
+        memory = await persistTravelerMemory({
+          userId: this.ctx.userId,
+          tripId: this.ctx.tripId,
+          text,
+          learned: memory.learned,
+          applied: memory.applied,
+        });
+        emitTrace({
+          tripId: this.ctx.tripId,
+          agent: "MEMORY",
+          step: memory.memoryMode === "Auto" ? "Saved with Backboard Auto" : "Saved to traveler memory",
+          detail: memory.learned.map((f) => f.content).join(" · ").slice(0, 180) || "No new facts",
+          status: memory.error ? "warn" : "ok",
+        });
+      } catch (err) {
+        emitTrace({
+          tripId: this.ctx.tripId,
+          agent: "MEMORY",
+          step: "Memory write skipped",
+          detail: err instanceof Error ? err.message : "unavailable",
+          status: "warn",
+        });
+      }
+    }
+
     await this.logAction({
       taskId: task.id,
       action: "orchestrator_complete",
@@ -169,6 +234,7 @@ export class Orchestrator extends BaseAgent {
       options,
       rovePick: pick,
       risk: (planned as any).risk ?? null,
+      memory,
       hotelDecision,
       localDecision,
       grandTotalUsd: (planned as any).grandTotalUsd ?? plan?.items?.reduce((s: number, i: any) => s + (i.priceUsd ?? 0), 0),

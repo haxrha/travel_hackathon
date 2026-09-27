@@ -17,15 +17,20 @@ export default async function DnaPage() {
         variant="dna"
         eyebrow="Company"
         title="Travel DNA"
-        subtitle="Preferences the Orchestrator reads before every plan — yours, and each traveler's."
+        subtitle="Preferences the Orchestrator reads before every plan — yours, and each traveler's. Standing facts also live in Memory and follow you across trips."
       />
 
       <section className="wp-card p-6">
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="wp-section-title">Traveler profiles</h2>
-          <Link href="/app/travelers" className="text-xs text-ember hover:underline">
-            Open directory
-          </Link>
+          <div className="flex gap-4">
+            <Link href="/app/memory" className="text-xs text-ember hover:underline">
+              Traveler memory
+            </Link>
+            <Link href="/app/travelers" className="text-xs text-ember hover:underline">
+              Open directory
+            </Link>
+          </div>
         </div>
         <p className="mt-1.5 text-sm text-text-tertiary">
           Click anyone to view and update their Travel DNA.

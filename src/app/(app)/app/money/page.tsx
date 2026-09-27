@@ -1,8 +1,12 @@
+import { Suspense } from "react";
 import { requireUserId } from "@/server/auth";
 import { TravelGraph } from "@/lib/graph/service";
 import { formatCurrency } from "@/lib/utils";
 import { getRate } from "@/lib/tools/currency/fx";
 import PageAsciiHero from "@/components/app/PageAsciiHero";
+import StripeCheckoutReturn from "@/components/app/StripeCheckoutReturn";
+import { isStripeConfigured, isStripeTestMode, listStripeCharges } from "@/lib/stripe/client";
+import { listLedger } from "@/lib/stripe/ledger";
 
 export default async function MoneyPage() {
   const userId = await requireUserId();
@@ -16,6 +20,32 @@ export default async function MoneyPage() {
 
   const total = rows.reduce((s, r) => s + Number(r.totalBudget), 0);
   const spent = rows.reduce((s, r) => s + Number(r.actual), 0);
+  const stripeOn = isStripeConfigured();
+  const testMode = isStripeTestMode();
+  let charges: { receipt: string; merchant: string; amountUsd: number; status: string; cardLast4?: string }[] = [];
+  let chargeError: string | undefined;
+  if (stripeOn) {
+    try {
+      charges = await listStripeCharges(8);
+    } catch (e) {
+      chargeError = e instanceof Error ? e.message : "Could not list Stripe charges";
+      charges = listLedger(userId).map((row) => ({
+        receipt: row.id,
+        merchant: row.merchant,
+        amountUsd: row.amountUsd,
+        status: row.status,
+        cardLast4: row.cardLast4,
+      }));
+    }
+  } else {
+    charges = listLedger(userId).map((row) => ({
+      receipt: row.id,
+      merchant: row.merchant,
+      amountUsd: row.amountUsd,
+      status: row.status,
+      cardLast4: row.cardLast4,
+    }));
+  }
 
   return (
     <div className="space-y-8">
@@ -23,8 +53,44 @@ export default async function MoneyPage() {
         variant="money"
         eyebrow="You"
         title="Money"
-        subtitle="Budgets across the Travel Graph · FX via Currency agent."
+        subtitle="Budgets across the Travel Graph · bookings settle through Stripe."
       />
+
+      <Suspense fallback={null}>
+        <StripeCheckoutReturn />
+      </Suspense>
+
+      <section className="wp-card space-y-2 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="wp-section-title">Stripe</h2>
+          <span className="rounded-full bg-white/10 px-3 py-1 text-xs text-text-secondary">
+            {stripeOn ? (testMode ? "Test mode" : "Live") : "Not configured"}
+          </span>
+        </div>
+        <p className="text-sm text-text-secondary">
+          {stripeOn
+            ? testMode
+              ? "Confirm booking charges the Stripe test card (pm_card_visa). Use a live secret key plus STRIPE_WEBHOOK_SECRET to take Checkout in production."
+              : "Live charges open Stripe Checkout unless STRIPE_PAYMENT_METHOD_ID is set."
+            : "Set STRIPE_SECRET_KEY, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY, and STRIPE_WEBHOOK_SECRET. Bookings stay simulated until the secret key is present."}
+        </p>
+        {chargeError && <p className="text-xs text-ember">{chargeError}</p>}
+        {charges.length > 0 && (
+          <ul className="mt-3 space-y-2 text-sm">
+            {charges.map((charge) => (
+              <li key={charge.receipt} className="flex flex-wrap items-baseline justify-between gap-2">
+                <span>
+                  {charge.merchant}
+                  {charge.cardLast4 ? ` · ****${charge.cardLast4}` : ""}
+                </span>
+                <span className="text-text-tertiary">
+                  {formatCurrency(charge.amountUsd)} · {charge.status}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card label="Total planned" value={formatCurrency(total)} />

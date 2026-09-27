@@ -2,17 +2,12 @@ import { BaseAgent } from "./base";
 import { getBookingProvider, type NormalizedOffer, type BookingResult } from "../tools/providers/booking";
 import { demoStore, isMemoryGraph } from "../demo/store";
 import { TravelGraph } from "../graph/service";
-import {
-  fundTreasury,
-  isRainConfigured,
-  mccForOfferKind,
-  payMerchant,
-  type PayMerchantResult,
-} from "../rain";
+import { chargeBooking, isStripeConfigured, type StripeChargeResult } from "../stripe/client";
+import { recordLedger } from "../stripe/ledger";
 
 /**
  * Execution agent — proposes bookings through PolicyEngine, then books.
- * When Rain env is configured, charges a single-use scoped card; otherwise mock-books.
+ * When Stripe is configured, charges a PaymentIntent (test keys) or opens Checkout (live keys).
  */
 export class ExecutionAgent extends BaseAgent {
   kind = "EXECUTOR" as const;
@@ -41,7 +36,8 @@ export class ExecutionAgent extends BaseAgent {
     policy: ReturnType<ExecutionAgent["check"]>;
     booking?: BookingResult;
     blocked?: boolean;
-    rainPayment?: PayMerchantResult;
+    stripePayment?: StripeChargeResult;
+    checkoutUrl?: string;
   }> {
     const policy = await this.proposeBook(offer);
     if (policy.requiresApproval && !approved) {
@@ -53,82 +49,136 @@ export class ExecutionAgent extends BaseAgent {
 
     const provider = getBookingProvider();
     let booking = await provider.book(offer);
-    let rainPayment: PayMerchantResult | undefined;
+    let stripePayment: StripeChargeResult | undefined;
 
-    if (isRainConfigured()) {
-      const merchant = offer.title.slice(0, 40) || `${offer.kind} booking`;
-      const mcc = mccForOfferKind(offer.kind);
-      await fundTreasury(offer.priceUsd + 1);
-      rainPayment = await payMerchant({
+    if (isStripeConfigured()) {
+      const merchant = offer.title.slice(0, 80) || `${offer.kind} booking`;
+      const origin = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      stripePayment = await chargeBooking({
         merchantName: merchant,
-        merchantCategoryCode: mcc,
         amountUsd: offer.priceUsd,
         memo: `${offer.kind}:${offer.id}`,
+        tripId: this.ctx.tripId,
+        offerId: offer.id,
+        userId: this.ctx.userId,
+        successUrl: `${origin}/app/money?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `${origin}/app/money?checkout=cancel`,
       });
 
-      if (rainPayment.status === "declined") {
+      if (stripePayment.status === "declined") {
         booking = {
           ...booking,
           ok: false,
           status: "FAILED",
-          steps: [
-            ...booking.steps,
-            "Charging Rain scoped card",
-            `Declined: ${rainPayment.reason}`,
-          ],
+          steps: [...booking.steps, "Creating Stripe charge", `Declined: ${stripePayment.reason}`],
           simulated: false,
         };
+        recordLedger({
+          id: `declined-${offer.id}-${Date.now()}`,
+          userId: this.ctx.userId,
+          tripId: this.ctx.tripId,
+          offerId: offer.id,
+          merchant,
+          amountUsd: offer.priceUsd,
+          status: "failed",
+          createdAt: new Date().toISOString(),
+        });
         await this.logAction({
-          action: "book_rain_declined",
-          tool: "rain",
-          input: { offerId: offer.id, merchant, mcc },
-          result: rainPayment as any,
+          action: "book_stripe_declined",
+          tool: "stripe",
+          input: { offerId: offer.id, merchant },
+          result: stripePayment as any,
           status: "FAILED",
           userAuthorization: approved,
         });
-        return { policy, booking, rainPayment };
+        return { policy, booking, stripePayment };
       }
 
-      booking = {
-        ...booking,
-        ok: true,
-        confirmationCode: rainPayment.receipt,
-        status: "CONFIRMED",
-        simulated: false,
-        steps: [
-          "Verifying availability",
-          "Funding Rain treasury",
-          "Issuing single-use scoped card",
-          "Authorizing & settling charge",
-          "Updating Travel Graph",
-        ],
-        rain: {
-          receipt: rainPayment.receipt,
-          cardLast4: rainPayment.card_last4,
-          merchant: rainPayment.merchant,
-          amountUsd: rainPayment.amount_usd,
-        },
-      };
+      if (stripePayment.status === "requires_action") {
+        booking = {
+          ...booking,
+          ok: true,
+          confirmationCode: stripePayment.sessionId,
+          status: "PENDING",
+          simulated: false,
+          steps: ["Verifying availability", "Creating Stripe Checkout session", "Waiting for payment"],
+          stripe: {
+            receipt: stripePayment.sessionId,
+            merchant: stripePayment.merchant,
+            amountUsd: stripePayment.amountUsd,
+            checkoutUrl: stripePayment.checkoutUrl,
+            status: "requires_action",
+          },
+        };
+        recordLedger({
+          id: stripePayment.sessionId,
+          userId: this.ctx.userId,
+          tripId: this.ctx.tripId,
+          offerId: offer.id,
+          merchant: stripePayment.merchant,
+          amountUsd: stripePayment.amountUsd,
+          status: "pending",
+          checkoutUrl: stripePayment.checkoutUrl,
+          createdAt: new Date().toISOString(),
+        });
+      } else {
+        booking = {
+          ...booking,
+          ok: true,
+          confirmationCode: stripePayment.receipt,
+          status: "CONFIRMED",
+          simulated: false,
+          steps: [
+            "Verifying availability",
+            "Creating Stripe PaymentIntent",
+            "Confirming card charge",
+            "Updating Travel Graph",
+          ],
+          stripe: {
+            receipt: stripePayment.receipt,
+            cardLast4: stripePayment.cardLast4,
+            merchant: stripePayment.merchant,
+            amountUsd: stripePayment.amountUsd,
+            status: "paid",
+          },
+        };
+        recordLedger({
+          id: stripePayment.receipt,
+          userId: this.ctx.userId,
+          tripId: this.ctx.tripId,
+          offerId: offer.id,
+          merchant: stripePayment.merchant,
+          amountUsd: stripePayment.amountUsd,
+          status: "paid",
+          cardLast4: stripePayment.cardLast4,
+          paymentIntentId: stripePayment.paymentIntentId,
+          createdAt: new Date().toISOString(),
+        });
+      }
     }
 
-    const usedRain = Boolean(booking.rain);
+    const paid = booking.stripe?.status === "paid";
+    const awaitingCheckout = booking.stripe?.status === "requires_action";
 
     if (this.ctx.tripId && isMemoryGraph()) {
       demoStore.addItem(this.ctx.tripId, {
         kind: offer.kind === "hotel" ? "HOTEL" : offer.kind === "flight" ? "FLIGHT" : offer.kind === "restaurant" ? "RESTAURANT" : "EXPERIENCE",
         title: offer.title,
-        status: "CONFIRMED",
+        status: paid ? "CONFIRMED" : awaitingCheckout ? "HELD" : "CONFIRMED",
         location: offer.location,
         payload: {
           priceUsd: offer.priceUsd,
           confirmationCode: booking.confirmationCode,
           provider: offer.provider,
           simulated: booking.simulated,
-          rain: booking.rain,
+          stripe: booking.stripe,
+          stripeSessionId: awaitingCheckout ? booking.stripe?.receipt : undefined,
           effective: offer.effective,
-          description: usedRain
-            ? `Paid via Rain · ****${booking.rain!.cardLast4} · ${booking.confirmationCode}`
-            : `Booked via WAYPORT · ${booking.confirmationCode}`,
+          description: paid
+            ? `Paid via Stripe · ${booking.stripe?.cardLast4 ? `****${booking.stripe.cardLast4} · ` : ""}${booking.confirmationCode}`
+            : awaitingCheckout
+              ? `Stripe Checkout open · ${booking.confirmationCode}`
+              : `Booked via WAYPORT · ${booking.confirmationCode}`,
           whatToDo: ["Save confirmation to Wallet", "Add to calendar", "Check cancellation window"],
         },
       });
@@ -136,46 +186,54 @@ export class ExecutionAgent extends BaseAgent {
         userId: this.ctx.userId,
         tripId: this.ctx.tripId,
         agent: "BOOKING",
-        tool: usedRain ? "rain" : "mock_booking",
+        tool: booking.stripe ? "stripe" : "mock_booking",
         action: "book_confirmed",
         input: { offerId: offer.id },
         result: {
           confirmationCode: booking.confirmationCode,
-          rain: booking.rain,
+          stripe: booking.stripe,
         },
         status: "EXECUTED",
       });
       demoStore.addAlert(this.ctx.tripId, {
-        title: `Booked · ${offer.title}`,
-        body: usedRain
-          ? `Rain receipt ${booking.confirmationCode} · card ****${booking.rain!.cardLast4}. Graph updated.`
-          : `Confirmation ${booking.confirmationCode} (simulated transaction). Graph updated.`,
+        title: `${awaitingCheckout ? "Checkout" : "Booked"} · ${offer.title}`,
+        body: paid
+          ? `Stripe receipt ${booking.confirmationCode}${booking.stripe?.cardLast4 ? ` · card ****${booking.stripe.cardLast4}` : ""}. Graph updated.`
+          : awaitingCheckout
+            ? `Stripe Checkout ${booking.confirmationCode} is waiting for payment.`
+            : `Confirmation ${booking.confirmationCode} (simulated transaction). Graph updated.`,
         severity: "INFO",
       });
     } else if (this.ctx.tripId) {
       await new TravelGraph(this.ctx.userId).addItem(this.ctx.tripId, {
         kind: (offer.kind === "hotel" ? "HOTEL" : "CUSTOM") as any,
         title: offer.title,
-        status: "CONFIRMED",
+        status: (paid || !awaitingCheckout ? "CONFIRMED" : "TENTATIVE") as "CONFIRMED" | "TENTATIVE",
         confirmationCode: booking.confirmationCode,
         payload: {
           priceUsd: offer.priceUsd,
           simulated: booking.simulated,
-          rain: booking.rain,
+          stripe: booking.stripe,
+          stripeSessionId: awaitingCheckout ? booking.stripe?.receipt : undefined,
         },
       });
     }
 
     await this.logAction({
       action: "book_executed",
-      tool: usedRain ? "rain" : "booking_provider",
+      tool: booking.stripe ? "stripe" : "booking_provider",
       input: { offerId: offer.id },
       result: booking as any,
       status: "EXECUTED",
       userAuthorization: approved,
     });
 
-    return { policy, booking, rainPayment };
+    return {
+      policy,
+      booking,
+      stripePayment,
+      checkoutUrl: stripePayment?.status === "requires_action" ? stripePayment.checkoutUrl : undefined,
+    };
   }
 
   async searchAndRank(kind: "hotel" | "flight" | "experience" | "restaurant", params: Record<string, unknown>) {

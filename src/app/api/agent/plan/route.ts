@@ -27,6 +27,7 @@ export async function POST(req: Request) {
       rovePick: (plan as any)?.rovePick ?? null,
       grandTotalUsd: (plan as any)?.grandTotalUsd ?? null,
       risk: (plan as any)?.risk ?? null,
+      memory: (plan as any)?.memory ?? null,
       hotelDecision: (plan as any)?.hotelDecision ?? null,
       localDecision: (plan as any)?.localDecision ?? null,
     });

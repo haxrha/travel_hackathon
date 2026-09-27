@@ -1,5 +1,8 @@
 import { prisma } from "@/server/db/client";
-import { BaseAgent, type AgentContext } from "./base";
+import { nightlyCeiling } from "../backboard/facts";
+import type { TravelerFact } from "../backboard/types";
+import { demoStore, isMemoryGraph } from "../demo/store";
+import { BaseAgent } from "./base";
 
 /**
  * Financial Agent — understands the money layer: budget, actual spend,
@@ -26,6 +29,59 @@ export class FinancialAgent extends BaseAgent {
     });
 
     return { total: budget.totalBudget, estimated: budget.estimated, actual: combined, remaining: budget.totalBudget.minus(combined) };
+  }
+
+  /**
+   * Apply remembered budget ceilings before spend is estimated.
+   * The ceiling comes from Backboard (or the local mirror) and is not
+   * re-typed on every trip.
+   */
+  async enforceTravelerMemory(facts: TravelerFact[]) {
+    const ceiling = nightlyCeiling(facts);
+    const summary = facts.map((f) => f.content);
+    await this.logAction({
+      action: "apply_traveler_memory",
+      tool: "backboard",
+      input: { facts: summary, hotelNightlyCeilingUsd: ceiling },
+      result: {
+        hotelNightlyCeilingUsd: ceiling,
+        enforced: facts.map((f) => f.content),
+      },
+      status: "INFO",
+    });
+
+    if (!this.ctx.tripId) return { hotelNightlyCeilingUsd: ceiling };
+
+    if (isMemoryGraph()) {
+      const trip = demoStore.getTrip(this.ctx.userId, this.ctx.tripId);
+      if (trip?.budgets?.[0] && ceiling) {
+        const categories = {
+          ...((trip.budgets[0] as { categories?: Record<string, unknown> }).categories ?? {}),
+          hotelNightlyCeilingUsd: ceiling,
+        };
+        (trip.budgets[0] as { categories?: Record<string, unknown> }).categories = categories;
+      }
+      demoStore.setTripMeta(this.ctx.tripId, {
+        hotelNightlyCeilingUsd: ceiling,
+        travelerMemory: summary,
+      });
+      return { hotelNightlyCeilingUsd: ceiling };
+    }
+
+    if (ceiling) {
+      const budget = await prisma.budget.findUnique({ where: { tripId: this.ctx.tripId } });
+      if (budget) {
+        const categories = {
+          ...((budget.categories ?? {}) as Record<string, unknown>),
+          hotelNightlyCeilingUsd: ceiling,
+        };
+        await prisma.budget.update({
+          where: { tripId: this.ctx.tripId },
+          data: { categories },
+        });
+      }
+    }
+    return { hotelNightlyCeilingUsd: ceiling };
   }
 
   async recordExpense(input: { tripId: string; itemId?: string; title: string; amount: number; currency: string; category: string; paidBy?: string }) {

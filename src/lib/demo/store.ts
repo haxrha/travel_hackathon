@@ -20,6 +20,7 @@ import {
   findDirectoryByEmail,
   findDirectoryTraveler,
 } from "@/lib/enterprise/directory";
+import type { TravelerMemoryBinding } from "@/lib/backboard/types";
 
 export function isMemoryGraph(): boolean {
   return isDemoMode() || !process.env.DATABASE_URL;
@@ -141,6 +142,8 @@ export type DemoProfile = {
   email: string;
   homeAirport: string;
   preferences: string[];
+  /** Cross-trip Backboard assistant binding and mirrored facts. */
+  memory?: TravelerMemoryBinding;
 };
 
 type Store = {

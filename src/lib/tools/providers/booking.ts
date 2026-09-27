@@ -36,13 +36,15 @@ export interface BookingResult {
   offer: NormalizedOffer;
   steps: string[];
   bookedAt: string;
-  /** False when charged through Rain sandbox scoped card. */
+  /** False when a Stripe charge or Checkout session was created. */
   simulated: boolean;
-  rain?: {
+  stripe?: {
     receipt: string;
-    cardLast4: string;
+    cardLast4?: string;
     merchant: string;
     amountUsd: number;
+    checkoutUrl?: string;
+    status: "paid" | "requires_action";
   };
 }
 

@@ -4,7 +4,8 @@ import { ExecutionAgent } from "@/lib/agents/execution";
 import { getBookingProvider, type NormalizedOffer } from "@/lib/tools/providers/booking";
 import { defaultAutonomy } from "@/lib/agents/orchestrator";
 import { getOrCreateProfile } from "@/lib/demo/store";
-import { isRainConfigured, purchaseHistory } from "@/lib/rain";
+import { isStripeConfigured, isStripeTestMode, listStripeCharges } from "@/lib/stripe/client";
+import { listLedger } from "@/lib/stripe/ledger";
 
 export async function POST(req: Request) {
   try {
@@ -14,6 +15,10 @@ export async function POST(req: Request) {
     const profile = getOrCreateProfile(userId);
     const autonomy = { ...defaultAutonomy(), ...profile.autonomy } as any;
     const agent = new ExecutionAgent({ userId, tripId, autonomy });
+    const stripe = {
+      configured: isStripeConfigured(),
+      testMode: isStripeTestMode(),
+    };
 
     if (action === "search") {
       const offers = await agent.searchAndRank(kind ?? "hotel", params ?? {});
@@ -22,25 +27,34 @@ export async function POST(req: Request) {
 
     if (action === "propose") {
       const decision = await agent.proposeBook(offer as NormalizedOffer);
-      return NextResponse.json({ ok: true, decision, offer, rainConfigured: isRainConfigured() });
+      return NextResponse.json({ ok: true, decision, offer, stripe });
     }
 
     if (action === "book") {
       const result = await agent.confirmBook(offer as NormalizedOffer, !!approved);
-      return NextResponse.json({ ok: true, rainConfigured: isRainConfigured(), ...result });
+      return NextResponse.json({ ok: true, stripe, ...result });
     }
 
     if (action === "history") {
-      if (!isRainConfigured()) {
+      if (!stripe.configured) {
         return NextResponse.json({
           ok: true,
-          rainConfigured: false,
-          purchases: [],
-          message: "Rain not configured — set RAIN_API_KEY, RAIN_USER_ID, RAIN_CONTRACT_ID",
+          stripe,
+          purchases: listLedger(userId),
+          message: "Stripe not configured — set STRIPE_SECRET_KEY (and STRIPE_WEBHOOK_SECRET for Checkout)",
         });
       }
-      const purchases = await purchaseHistory(Number(body.limit ?? 20));
-      return NextResponse.json({ ok: true, rainConfigured: true, purchases });
+      try {
+        const purchases = await listStripeCharges(Number(body.limit ?? 20));
+        return NextResponse.json({ ok: true, stripe, purchases });
+      } catch (error) {
+        return NextResponse.json({
+          ok: true,
+          stripe,
+          purchases: listLedger(userId),
+          message: error instanceof Error ? error.message : "Could not list Stripe charges",
+        });
+      }
     }
 
     if (action === "cancel") {
