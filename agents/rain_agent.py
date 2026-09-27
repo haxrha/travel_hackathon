@@ -1,10 +1,11 @@
-"""Travel multi-agent stack with Rain sandbox spend on confirmed bookings.
+"""Travel multi-agent stack that pays confirmed bookings through Stripe.
 
 Research flights/hotels via Tavily sub-agents; pay via create_booking_agent using
-AGENT_TOOLS from utils.rain_tools (fund_treasury, pay_merchant, purchase_history).
+AGENT_TOOLS from utils.stripe_tools (fund_treasury, pay_merchant, purchase_history).
 
-Requires agents/.env: RAIN_API_KEY, RAIN_USER_ID, RAIN_CONTRACT_ID, TAVILY_API_KEY,
-plus credentials for the Gemini model used by utils.model.
+Requires agents/.env: STRIPE_SECRET_KEY, TAVILY_API_KEY, plus credentials for the
+Gemini model used by utils.model. Optional: STRIPE_PAYMENT_METHOD_ID for live
+off-session charges.
 
 Run:  uv run python rain_agent.py
 """
@@ -26,7 +27,7 @@ from pydantic_ai_harness.planning import Planning
 from pydantic_ai_harness.subagents import SubAgent, SubAgents
 
 from utils.model import model_gemini_retry
-from utils.rain_tools import AGENT_TOOLS, API_KEY, purchase_history
+from utils.stripe_tools import AGENT_TOOLS, API_KEY, purchase_history
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 DATA_PATH = Path(__file__).parent / "data01.json"
@@ -40,10 +41,7 @@ def load_instructions(name: str) -> str:
 def build_travel_agent(*, fast: bool = False) -> Agent:
     tavily_key = os.getenv("TAVILY_API_KEY", "")
     if not API_KEY:
-        raise RuntimeError(
-            "RAIN_API_KEY is not set — put RAIN_API_KEY, RAIN_USER_ID, "
-            "RAIN_CONTRACT_ID in agents/.env"
-        )
+        raise RuntimeError("STRIPE_SECRET_KEY is not set — put it in agents/.env")
     if not tavily_key:
         raise RuntimeError("TAVILY_API_KEY is not set — put it in agents/.env")
 
@@ -51,9 +49,9 @@ def build_travel_agent(*, fast: bool = False) -> Agent:
         model=model_gemini_retry,
         name="create_booking_agent",
         description=(
-            "Books and pays for exact confirmed flights and hotel rooms using the "
-            "company card. Provide complete per-traveler details; it funds the "
-            "treasury, pays each merchant, and returns receipts."
+            "Books and pays for exact confirmed flights and hotel rooms using "
+            "Stripe. Provide complete per-traveler details; it confirms the "
+            "account, pays each merchant, and returns receipts."
         ),
         instructions=load_instructions("create_booking_agent"),
         tools=AGENT_TOOLS,
@@ -103,13 +101,13 @@ def build_travel_agent(*, fast: bool = False) -> Agent:
 
 
 def audit_purchases(budget_usd: float | None = None, limit: int = 20) -> None:
-    """Print Rain ledger spend so we trust receipts over model text."""
+    """Print Stripe charges so we trust receipts over model text."""
     purchases = purchase_history(limit=limit)
     if not purchases:
-        print("\nNo spend transactions in Rain yet.")
+        print("\nNo Stripe charges yet.")
         return
 
-    print("\nRain purchase history (newest first):")
+    print("\nStripe charges (newest first):")
     for purchase in purchases:
         print(
             f"{purchase['amount_usd']:>10.2f}  {purchase['status']:<10} "
@@ -141,7 +139,7 @@ def main() -> None:
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         pass
 
-    # data01.json has approval_status=pending; for CLI we approve so booking/Rain can run.
+    # data01.json has approval_status=pending; for CLI we approve so booking/Stripe can run.
     prompt = (
         trip_request
         + "\n\nORGANIZER DECISION: APPROVED. "
@@ -165,7 +163,7 @@ def main() -> None:
     result = travel_agent.run_sync(prompt)
     print("\n=== agent output ===\n", flush=True)
     print(result.output, flush=True)
-    print("\n=== rain ledger audit ===", flush=True)
+    print("\n=== stripe ledger audit ===", flush=True)
     audit_purchases(budget_usd=budget_usd)
 
 

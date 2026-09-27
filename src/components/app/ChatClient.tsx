@@ -24,18 +24,29 @@ type Option = {
 };
 
 const SUGGESTIONS = [
-  "Plan a 5-day Kyoto trip under $3000 with great food",
+  "5 days in Kyoto. I prefer aisle seats, I'm vegetarian, I avoid red-eyes, and my hotel ceiling is $150/night.",
+  "Plan 4 days in Lisbon — use what you already know about me.",
   "Find me a walkable hotel in Lisbon for next month",
-  "I want Portugal for a week — slow travel, local restaurants",
   "Weekend in NYC, nightlife + museums, $1500",
 ];
+
+type MemoryFact = { id: string; content: string };
+type MemoryTurn = {
+  provider: "backboard" | "local";
+  configured: boolean;
+  memoryMode?: "Auto";
+  assistantId?: string;
+  recalled: MemoryFact[];
+  learned: MemoryFact[];
+  error?: string;
+};
 
 export default function ChatClient() {
   const [input, setInput] = useState("");
   const [msgs, setMsgs] = useState<Msg[]>([
     {
       role: "wayport",
-      text: "Where are we going? Tell me the vibe, dates, and budget — I handle the rest.",
+      text: "Where are we going? Preferences you mention — aisle seats, diet, red-eyes, a nightly ceiling — stick with you on the next trip.",
     },
   ]);
   const [loading, setLoading] = useState(false);
@@ -47,6 +58,7 @@ export default function ChatClient() {
   const [risk, setRisk] = useState<RiskDecision | null>(null);
   const [hotelDecision, setHotelDecision] = useState<DecisionTrace | null>(null);
   const [localDecision, setLocalDecision] = useState<DecisionTrace | null>(null);
+  const [memory, setMemory] = useState<MemoryTurn | null>(null);
 
   async function send(textOverride?: string) {
     const text = (textOverride ?? input).trim();
@@ -59,9 +71,10 @@ export default function ChatClient() {
     setRisk(null);
     setHotelDecision(null);
     setLocalDecision(null);
+    setMemory(null);
     setMsgs((m) => [...m, { role: "user", text }]);
     setLoading(true);
-    setStage(["Parsing intent…", "Scoring trip shapes with Rove…"]);
+    setStage(["Recalling traveler memory…", "Parsing intent…", "Scoring trip shapes with Rove…"]);
 
     const tick = window.setTimeout(() => setStage((s) => [...s, "Planner drafting itinerary…"]), 400);
     const tick2 = window.setTimeout(() => setStage((s) => [...s, "Flights · Hotels · Local agents…"]), 900);
@@ -83,14 +96,28 @@ export default function ChatClient() {
       setRisk(data.risk ?? plan?.risk ?? null);
       setHotelDecision(data.hotelDecision ?? null);
       setLocalDecision(data.localDecision ?? null);
-      setStage((s) => [...s, `Rove picked “${pick?.label ?? "balanced"}”`, "Writing nodes to Travel Graph ✓"]);
+      const turn: MemoryTurn | null = data.memory ?? plan?.memory ?? null;
+      setMemory(turn);
+      const remembered = turn?.recalled?.map((f) => f.content).join("; ");
+      setStage((s) => [
+        ...s,
+        remembered ? `Memory already knew: ${remembered}` : "No prior traveler memory",
+        `Rove picked “${pick?.label ?? "balanced"}”`,
+        "Writing nodes to Travel Graph ✓",
+      ]);
 
       const riskNote = data.risk?.options?.find((o: any) => o.chosen);
       const summary =
         plan?.summary ??
         `I've sketched a ${plan?.days ?? ""}-day trip to ${plan?.destination ?? "your destination"}.`;
       const itemCount = plan?.items?.length ?? 0;
-      const detail = `${summary}${itemCount ? ` · ${itemCount} priced stops on the graph.` : ""}${
+      const memoryNote = remembered
+        ? ` I already knew: ${remembered}.`
+        : "";
+      const learnedNote = turn?.learned?.length
+        ? ` I'll remember ${turn.learned.map((f) => f.content.replace(/\.$/, "").toLowerCase())} on the next trip.`
+        : "";
+      const detail = `${summary}${itemCount ? ` · ${itemCount} priced stops on the graph.` : ""}${memoryNote}${learnedNote}${
         riskNote
           ? ` · Risk engine chose ${riskNote.label} (${riskNote.successProbability}% success) over the earlier slot.`
           : ""
@@ -180,6 +207,40 @@ export default function ChatClient() {
                 Open map OS
               </Link>
             </div>
+          </div>
+        )}
+
+        {memory && (memory.recalled.length > 0 || memory.learned.length > 0 || memory.error) && (
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm">
+            <div className="wp-eyebrow">
+              {memory.configured ? "Backboard memory · Auto" : "Traveler memory · local"}
+            </div>
+            {memory.recalled.length > 0 && (
+              <div className="mt-3">
+                <div className="text-xs text-text-tertiary">Already knew, from earlier trips</div>
+                <ul className="mt-1 space-y-1">
+                  {memory.recalled.map((f) => (
+                    <li key={f.id}>{f.content}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {memory.learned.length > 0 && (
+              <div className="mt-3">
+                <div className="text-xs text-text-tertiary">Learned just now</div>
+                <ul className="mt-1 space-y-1">
+                  {memory.learned.map((f) => (
+                    <li key={f.id}>{f.content}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {memory.error && <p className="mt-3 text-xs text-ember">{memory.error}</p>}
+            {!memory.configured && (
+              <p className="mt-3 text-xs text-text-tertiary">
+                Set BACKBOARD_API_KEY to store these on a Backboard assistant. A new trip opens a new thread and still retrieves them.
+              </p>
+            )}
           </div>
         )}
 

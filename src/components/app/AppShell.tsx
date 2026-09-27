@@ -14,6 +14,7 @@ import {
   Gift,
   Bell,
   Dna,
+  Brain,
   Settings,
   Sparkles,
   Plane,
@@ -61,6 +62,7 @@ const GROUPS: NavGroup[] = [
     label: "You",
     items: [
       { href: "/app/dna", label: "Travel DNA", icon: Dna },
+      { href: "/app/memory", label: "Memory", icon: Brain },
       { href: "/app/autonomy", label: "Autonomy", icon: Settings },
       { href: "/app/money", label: "Money", icon: Wallet },
       { href: "/app/rewards", label: "Rewards", icon: Gift },

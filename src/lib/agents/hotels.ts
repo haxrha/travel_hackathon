@@ -10,11 +10,25 @@ export class HotelAgent extends BaseAgent {
     super(ctx);
   }
 
-  async search(destination: string, checkIn: string, checkOut: string, prefs: Record<string, number>) {
+  async search(
+    destination: string,
+    checkIn: string,
+    checkOut: string,
+    prefs: Record<string, number>,
+    opts?: { nightlyCeilingUsd?: number },
+  ) {
     const results = await searchHotels({ destination, checkIn, checkOut });
+    const ceiling = opts?.nightlyCeilingUsd;
     const ranked = results
       .map((h) => ({ ...h, wayportMatch: wayportMatchScore(h, prefs) }))
-      .sort((a, b) => b.wayportMatch - a.wayportMatch);
+      .sort((a, b) => {
+        if (ceiling) {
+          const aOver = a.pricePerNight > ceiling ? 1 : 0;
+          const bOver = b.pricePerNight > ceiling ? 1 : 0;
+          if (aOver !== bOver) return aOver - bOver;
+        }
+        return b.wayportMatch - a.wayportMatch;
+      });
 
     const candidates: RankedCandidate[] = ranked.map((h) => ({
       id: h.id,
@@ -32,7 +46,9 @@ export class HotelAgent extends BaseAgent {
     const decision: DecisionTrace = buildDecisionTrace({
       agent: "HOTELS",
       tool: "stay22",
-      question: `Which stay in ${destination} best fits walkability + budget sensitivity?`,
+      question: ceiling
+        ? `Which stay in ${destination} stays at or under $${ceiling}/night (traveler memory) and fits walkability?`
+        : `Which stay in ${destination} best fits walkability + budget sensitivity?`,
       candidates,
     });
 

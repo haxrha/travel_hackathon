@@ -14,16 +14,18 @@ export default function BookingReview({
   onBooked?: (confirmationCode: string) => void;
 }) {
   const [offer] = useState(initial);
-  const [phase, setPhase] = useState<"review" | "booking" | "done" | "need_approval" | "failed">("review");
+  const [phase, setPhase] = useState<"review" | "booking" | "done" | "need_approval" | "failed" | "checkout">("review");
   const [steps, setSteps] = useState<string[]>([]);
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const [policyReason, setPolicyReason] = useState<string | null>(null);
-  const [rainConfigured, setRainConfigured] = useState<boolean | null>(null);
-  const [rainInfo, setRainInfo] = useState<{
+  const [stripeState, setStripeState] = useState<{ configured: boolean; testMode: boolean } | null>(null);
+  const [stripeInfo, setStripeInfo] = useState<{
     receipt: string;
-    cardLast4: string;
+    cardLast4?: string;
     merchant: string;
     amountUsd: number;
+    checkoutUrl?: string;
+    status: "paid" | "requires_action";
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,8 +36,8 @@ export default function BookingReview({
       body: JSON.stringify({ action: "history", limit: 1 }),
     })
       .then((r) => r.json())
-      .then((data) => setRainConfigured(Boolean(data.rainConfigured)))
-      .catch(() => setRainConfigured(false));
+      .then((data) => setStripeState(data.stripe ?? { configured: false, testMode: false }))
+      .catch(() => setStripeState({ configured: false, testMode: false }));
   }, []);
 
   async function book(approved = false) {
@@ -48,6 +50,7 @@ export default function BookingReview({
       body: JSON.stringify({ action: "book", tripId, offer, approved }),
     });
     const data = await res.json();
+    if (data.stripe) setStripeState(data.stripe);
     if (data.blocked) {
       setPolicyReason(data.policy?.reason ?? "Needs your approval");
       setPhase("need_approval");
@@ -56,12 +59,16 @@ export default function BookingReview({
     if (data.booking?.status === "FAILED" || data.booking?.ok === false) {
       const staged = (data.booking.steps as string[]) ?? [];
       setSteps(staged.map((s) => `• ${s}`));
-      setError(data.rainPayment?.reason ?? "Payment failed");
+      setError(data.stripePayment?.reason ?? "Payment failed");
       setPhase("failed");
       return;
     }
-    if (typeof data.rainConfigured === "boolean") {
-      setRainConfigured(data.rainConfigured);
+    if (data.checkoutUrl) {
+      setStripeInfo(data.booking?.stripe ?? null);
+      setConfirmation(data.booking?.confirmationCode ?? null);
+      setPhase("checkout");
+      window.location.href = data.checkoutUrl;
+      return;
     }
     if (data.booking) {
       const staged = data.booking.steps as string[];
@@ -70,11 +77,20 @@ export default function BookingReview({
         setSteps(staged.slice(0, i + 1).map((s) => `✓ ${s}`));
       }
       setConfirmation(data.booking.confirmationCode);
-      setRainInfo(data.booking.rain ?? null);
+      setStripeInfo(data.booking.stripe ?? null);
       setPhase("done");
       onBooked?.(data.booking.confirmationCode);
     }
   }
+
+  const stripeLine =
+    stripeState === null
+      ? "… checking Stripe configuration"
+      : stripeState.configured
+        ? stripeState.testMode
+          ? "✓ Stripe test mode — confirm charges pm_card_visa"
+          : "✓ Stripe live — confirm opens Checkout"
+        : "○ Stripe not configured — booking stays simulated (set STRIPE_SECRET_KEY)";
 
   return (
     <div className="wp-card rounded-2xl p-6 space-y-4">
@@ -99,14 +115,8 @@ export default function BookingReview({
       </div>
       <ul className="text-xs text-text-secondary space-y-1">
         <li>✓ Within budget check</li>
-        <li>✓ Preference match via DNA / quality vector</li>
-        <li>
-          {rainConfigured === null
-            ? "… checking Rain configuration"
-            : rainConfigured
-              ? "✓ Rain sandbox connected — confirm will charge a scoped card"
-              : "○ Rain not configured — booking stays simulated (set RAIN_* in agents/.env or .env.local)"}
-        </li>
+        <li>✓ Preference match via DNA / traveler memory</li>
+        <li>{stripeLine}</li>
       </ul>
 
       {phase === "review" && (
@@ -130,6 +140,19 @@ export default function BookingReview({
           ))}
         </div>
       )}
+      {phase === "checkout" && (
+        <div className="rounded-xl border border-ember/30 bg-ember/10 p-4 space-y-2">
+          <div className="font-semibold text-ember">OPENING STRIPE CHECKOUT</div>
+          <p className="text-xs text-text-secondary">
+            Session {confirmation}. Finish payment on Stripe — the Travel Graph updates when Checkout completes.
+          </p>
+          {stripeInfo?.checkoutUrl && (
+            <a href={stripeInfo.checkoutUrl} className="wp-cta inline-flex px-5 py-2.5 text-sm">
+              Continue to Stripe
+            </a>
+          )}
+        </div>
+      )}
       {phase === "failed" && (
         <div className="rounded-xl border border-ember/30 bg-ember/10 p-4 space-y-2">
           <div className="font-semibold text-ember">PAYMENT FAILED</div>
@@ -146,13 +169,14 @@ export default function BookingReview({
       )}
       {phase === "done" && confirmation && (
         <div className="rounded-xl border border-ok/30 bg-ok/10 p-4">
-          <div className="font-semibold text-ok">{rainInfo ? "PAID VIA RAIN" : "BOOKED"}</div>
+          <div className="font-semibold text-ok">{stripeInfo ? "PAID VIA STRIPE" : "BOOKED"}</div>
           <div className="mt-1 font-mono text-sm">
-            {rainInfo ? `Receipt ${confirmation}` : `Confirmation ${confirmation}`}
+            {stripeInfo ? `Receipt ${confirmation}` : `Confirmation ${confirmation}`}
           </div>
-          {rainInfo && (
+          {stripeInfo && (
             <p className="mt-2 text-xs text-text-secondary">
-              {formatCurrency(rainInfo.amountUsd)} · {rainInfo.merchant} · card ****{rainInfo.cardLast4}
+              {formatCurrency(stripeInfo.amountUsd)} · {stripeInfo.merchant}
+              {stripeInfo.cardLast4 ? ` · card ****${stripeInfo.cardLast4}` : ""}
             </p>
           )}
           <p className="mt-2 text-xs text-text-secondary">Travel Graph updated with CONFIRMED node.</p>

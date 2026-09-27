@@ -198,6 +198,26 @@ export async function enrichTripWithLiveQuotes(
 
 /** Sync apply — used by tests / when Gemini result already known. */
 export function applyQuotesToTrip(trip: DemoTrip, quotes: ResearchQuotes) {
+  const ceiling = Number(trip.meta?.hotelNightlyCeilingUsd);
+  if (Number.isFinite(ceiling) && ceiling > 0 && quotes.nightlyRateUsd > ceiling) {
+    quotes = {
+      ...quotes,
+      nightlyRateUsd: ceiling,
+      notes: [quotes.notes, `Capped at $${ceiling}/night by traveler memory.`].filter(Boolean).join(" "),
+    };
+  }
+  if (trip.meta?.avoidsRedEye) {
+    quotes = {
+      ...quotes,
+      notes: [quotes.notes, "Daytime flights only — red-eyes excluded by traveler memory."].filter(Boolean).join(" "),
+    };
+  }
+  if (typeof trip.meta?.seatPreference === "string") {
+    quotes = {
+      ...quotes,
+      notes: [quotes.notes, `Seat preference: ${trip.meta.seatPreference}.`].filter(Boolean).join(" "),
+    };
+  }
   const travelers = party(trip);
   const dest = destAirport(trip);
   const nights = nightsBetween(trip.startDate, trip.endDate ?? trip.startDate);

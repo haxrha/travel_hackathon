@@ -9,6 +9,8 @@ import { demoStore, isMemoryGraph } from "../demo/store";
 import { enrichItemMeta } from "./pricing";
 import { day0DinnerRiskDecision, type RiskDecision } from "../decision/risk";
 import { emitTrace } from "./trace";
+import { applyMemoryToPlanItems, formatMemoryForPrompt } from "../backboard/facts";
+import type { TravelerFact } from "../backboard/types";
 
 /** Cheap free-tier Gemini model; falls back to skeleton itinerary without a key. */
 const geminiKey =
@@ -42,7 +44,12 @@ const PlanSchema = z.object({
 export class PlannerAgent extends BaseAgent {
   kind = "PLANNER" as const;
 
-  async planFromText(taskId: string, text: string, dna?: Partial<TravelerDNA>) {
+  async planFromText(
+    taskId: string,
+    text: string,
+    dna?: Partial<TravelerDNA>,
+    memoryFacts?: TravelerFact[],
+  ) {
     const intent = parsePlanningIntent(text, dna as TravelerDNA | undefined);
 
     let plan: z.infer<typeof PlanSchema> = {
@@ -59,7 +66,7 @@ export class PlannerAgent extends BaseAgent {
           model,
           schema: PlanSchema,
           abortSignal: AbortSignal.timeout(18_000),
-          prompt: `Turn this travel request into a concrete day-by-day itinerary. Keep it realistic, budget-aware, and traveler-aware.\n\nRequest: ${text}\n\nTraveler DNA: ${JSON.stringify(dna ?? {})}\n\nRules: no overlapping items, first activity at least 2 hours after flight arrival, respect relaxation preference, prioritize food when food priority is high. Each item must have a dayOffset (0-indexed). For every item include: location (a real, geocodeable place name like "Fushimi Inari Taisha, Kyoto" or "Pontocho Alley, Kyoto" — never vague labels like "downtown" alone), priceUsd (realistic USD), description (1-2 sentences), and whatToDo (2-4 short actionable tips for that stop). Titles should name the place when possible so the map can pin the same spot.`,
+          prompt: `Turn this travel request into a concrete day-by-day itinerary. Keep it realistic, budget-aware, and traveler-aware.\n\nRequest: ${text}\n\nTraveler DNA: ${JSON.stringify(dna ?? {})}\n\nCross-trip traveler memory (persisted across trips — apply even when this request does not repeat them):\n${formatMemoryForPrompt(memoryFacts ?? [])}\n\nRules: no overlapping items, first activity at least 2 hours after flight arrival, respect relaxation preference, prioritize food when food priority is high. Obey memory: aisle/window seats, diet, no red-eye flights when memory says so, and never price a hotel above a remembered nightly ceiling. Each item must have a dayOffset (0-indexed). For every item include: location (a real, geocodeable place name like "Fushimi Inari Taisha, Kyoto" or "Pontocho Alley, Kyoto" — never vague labels like "downtown" alone), priceUsd (realistic USD), description (1-2 sentences), and whatToDo (2-4 short actionable tips for that stop). Titles should name the place when possible so the map can pin the same spot.`,
         });
         plan = object;
         // Ensure every item has pricing / tips
@@ -107,6 +114,10 @@ export class PlannerAgent extends BaseAgent {
       }
       return item;
     });
+
+    if (memoryFacts?.length) {
+      plan.items = applyMemoryToPlanItems(plan.items, memoryFacts);
+    }
 
     emitTrace({
       tripId: this.ctx.tripId,

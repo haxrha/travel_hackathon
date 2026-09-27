@@ -24,6 +24,8 @@ const isProtected = createRouteMatcher([
   "/api/optimize(.*)",
   "/api/world(.*)",
   "/api/booking(.*)",
+  "/api/memory(.*)",
+  "/api/stripe/confirm(.*)",
   "/api/live(.*)",
   "/api/weather(.*)",
   "/api/voice(.*)",

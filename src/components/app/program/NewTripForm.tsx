@@ -198,11 +198,20 @@ export default function NewTripForm() {
           costCenter: form.costCenter.trim() || undefined,
           travelerIds,
           newTravelers: adHoc,
+          notes: freeText.trim() || undefined,
         });
         clearTimers();
         if (res?.tripId) {
+          const remembered = res.memory?.recalled?.length
+            ? `Memory already knew: ${res.memory.recalled.join("; ")}`
+            : null;
+          const learned = res.memory?.learned?.length
+            ? `Remembered for next trip: ${res.memory.learned.join("; ")}`
+            : null;
           setStages((s) => [
             ...s,
+            ...(remembered ? [remembered] : []),
+            ...(learned ? [learned] : []),
             res.planned
               ? "Travel Graph updated"
               : `Trip saved${res.planError ? ` — plan deferred: ${res.planError}` : ""}`,
@@ -244,7 +253,7 @@ export default function NewTripForm() {
           <textarea
             id="freetext"
             className="wp-input min-h-[5.5rem] resize-y"
-            placeholder="Offsite in Lisbon from SFO on March 14 for 4 days, 12 people, $32,000"
+            placeholder="Lisbon from SFO, March 14, 4 days. I prefer aisle seats, I'm vegetarian, I avoid red-eyes, hotel ceiling $150/night."
             value={freeText}
             onChange={(e) => setFreeText(e.target.value)}
             rows={3}
