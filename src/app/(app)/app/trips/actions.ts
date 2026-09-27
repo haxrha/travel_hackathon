@@ -31,6 +31,8 @@ export interface CreateTripInput {
   travelerIds?: string[];
   /** Travelers typed in by hand, not in the directory. */
   newTravelers?: NewTravelerInput[];
+  /** Original description, including offhand preferences the form fields do not capture. */
+  notes?: string;
 }
 
 /**
@@ -92,6 +94,7 @@ export async function createTripFromIntake(input: CreateTripInput) {
   // stalling the UI on "Writing to the Travel Graph…".
   let planned = false;
   let planError: string | undefined;
+  let memory: { provider: string; recalled: string[]; learned: string[] } | undefined;
   try {
     const { Orchestrator, defaultAutonomy } = await import("@/lib/agents/orchestrator");
     const { withTimeout } = await import("@/lib/utils/timeout");
@@ -100,7 +103,7 @@ export async function createTripFromIntake(input: CreateTripInput) {
       tripId: trip.id,
       autonomy: defaultAutonomy(),
     });
-    await withTimeout(
+    const plannedResult = await withTimeout(
       orch.handleUserMessage(buildPlanningBrief(input, travelers), {
         specialists: false,
       }),
@@ -108,6 +111,7 @@ export async function createTripFromIntake(input: CreateTripInput) {
       "planner",
     );
     planned = true;
+    memory = summarizeMemory((plannedResult as { memory?: unknown }).memory);
   } catch (e) {
     // A failed plan must not lose the trip. The itinerary can be regenerated;
     // silently discarding the traveler's intake cannot be undone.
@@ -167,7 +171,21 @@ export async function createTripFromIntake(input: CreateTripInput) {
 
   revalidatePath("/app/trips");
   revalidatePath(`/app/trips/${trip.id}`);
-  return { tripId: trip.id, planned, planError, quotesError, firebase };
+  return { tripId: trip.id, planned, planError, quotesError, firebase, memory };
+}
+
+function summarizeMemory(memory: unknown): { provider: string; recalled: string[]; learned: string[] } | undefined {
+  if (!memory || typeof memory !== "object") return undefined;
+  const turn = memory as {
+    provider?: string;
+    recalled?: { content?: string }[];
+    learned?: { content?: string }[];
+  };
+  return {
+    provider: turn.provider ?? "local",
+    recalled: (turn.recalled ?? []).map((f) => f.content).filter((c): c is string => Boolean(c)),
+    learned: (turn.learned ?? []).map((f) => f.content).filter((c): c is string => Boolean(c)),
+  };
 }
 
 /**
@@ -207,6 +225,9 @@ function buildPlanningBrief(input: CreateTripInput, travelers: Attendee[]): stri
     ...(t.accessibility ?? []).map((a) => `${t.name}: ${a}`),
   ]);
   if (needs.length) lines.push(`Requirements — ${needs.join("; ")}.`);
+  if (input.notes?.trim()) {
+    lines.push(`Traveler said: ${input.notes.trim()}`);
+  }
 
   return lines.filter(Boolean).join(" ");
 }

@@ -154,6 +154,19 @@ export default function TripDetail({
         </div>
       </header>
 
+      {Array.isArray(meta.travelerMemory) && meta.travelerMemory.length > 0 && (
+        <section className="wp-card px-5 py-4">
+          <div className="wp-eyebrow">Traveler memory applied</div>
+          <ul className="mt-2 flex flex-wrap gap-2 text-sm">
+            {(meta.travelerMemory as string[]).map((fact) => (
+              <li key={fact} className="rounded-full bg-white/10 px-3 py-1 text-text-secondary">
+                {fact}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {shareUrl && (
         <div className="wp-card rounded-2xl p-4 text-sm">
           <div className="wp-eyebrow">Shareable proposal</div>

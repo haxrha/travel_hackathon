@@ -27,12 +27,12 @@ export default async function MemoryPage() {
           </span>
         </div>
         <p className="text-sm text-text-secondary">
-          Plan a trip in the{" "}
+          In the{" "}
           <Link href="/app/trips/new" className="text-ember hover:underline">
             concierge
-          </Link>{" "}
-          and mention a preference offhand — aisle seats, vegetarian, no red-eyes, a $150 nightly ceiling.
-          Start a second trip in a new thread. The planner and financial agent already apply what was stored.
+          </Link>
+          , describe a trip and mention a preference offhand — aisle seats, vegetarian, no red-eyes, a $150 nightly ceiling.
+          Create a second trip. That description is a new thread; the planner and financial agent already apply what was stored.
         </p>
         {memory.assistantId && (
           <p className="font-mono text-xs text-text-tertiary">Assistant {memory.assistantId}</p>
