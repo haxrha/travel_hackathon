@@ -1,0 +1,19 @@
+{
+  "name": "maizetix-ticket-alert",
+  "private": true,
+  "type": "module",
+  "description": "agent project: maizetix-ticket-alert",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "dev": "agent-sdk dev",
+    "test": "node --experimental-strip-types --test bot/lib/*.test.ts"
+  },
+  "dependencies": {
+    "@grok/agent-sdk": "^0.2.29",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "typescript": "6.0.3"
+  }
+}
